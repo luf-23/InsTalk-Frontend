@@ -1,6 +1,6 @@
-import request from "@/util/network/request";
+import request from "@/util/network/http/request";
 
-// 登录
+// 登录 - 支持用户名和邮箱两种方式
 export const loginService = (data) => {
     return request({
         url: '/auth/login',
@@ -20,6 +20,18 @@ export const registerService = (data) => {
         data,
         headers: {
             'Content-Type': 'application/json'
+        }
+    });
+};
+
+//获取验证码
+export const getCaptchaService = (params) => {
+    return request({
+        url: `/auth/captcha`,
+        method: 'get',
+        params,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
         }
     });
 };

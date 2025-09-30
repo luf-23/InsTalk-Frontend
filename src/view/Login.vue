@@ -1,3 +1,117 @@
+<script setup>
+import { ref, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useAuthStore } from '../store/auth.js'
+import { useUserInfoStore } from '@/store/userInfo.js'
+import { loginService } from '@/api/auth.js'
+
+const router = useRouter()
+const authStore = useAuthStore()
+const userInfoStore = useUserInfoStore()
+const loginFormRef = ref()
+const loading = ref(false)
+
+// 登录表单数据
+const loginForm = reactive({
+  username: '',
+  password: ''
+})
+
+// 表单验证规则
+const loginRules = {
+  username: [
+    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' },
+    { 
+      validator: (rule, value, callback) => {
+        if (!value) {
+          callback(new Error('请输入用户名或邮箱'))
+          return
+        }
+        // 如果包含@，按邮箱验证
+        if (value.includes('@')) {
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+          if (!emailRegex.test(value)) {
+            callback(new Error('请输入正确的邮箱格式'))
+          } else {
+            callback()
+          }
+        } else {
+          // 用户名验证：5-16位非空白字符，不能包含@
+          if (!/^\S{5,16}$/.test(value)) {
+            callback(new Error('用户名必须是5-16位非空白字符'))
+          } else if (value.includes('@')) {
+            callback(new Error('用户名不能包含@符号'))
+          } else {
+            callback()
+          }
+        }
+      }, 
+      trigger: 'blur' 
+    }
+  ],
+  password: [
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { 
+      pattern: /^\S{5,16}$/, 
+      message: '密码必须是5-16位非空白字符', 
+      trigger: 'blur' 
+    }
+  ]
+}
+
+// 处理登录
+const handleLogin = async () => {
+  if (!loginFormRef.value) return
+  
+  try {
+    const valid = await loginFormRef.value.validate()
+    if (!valid) return
+    
+    loading.value = true
+    
+    // 根据用户名是否包含@来决定传入参数
+    const loginData = loginForm.username.includes('@') 
+      ? {
+          email: loginForm.username,
+          password: loginForm.password
+        }
+      : {
+          username: loginForm.username,
+          password: loginForm.password
+        }
+    
+    const result = await loginService(loginData)
+    
+    authStore.setAccessToken(result.accessToken)
+    authStore.setRefreshToken(result.refreshToken)
+    const userInfo = {
+      id: result.id,
+      username: result.username,
+      email: result.email,
+      avatar: result.avatar,
+      role: result.role
+    }
+    userInfoStore.setUserInfo(userInfo)
+
+    // 跳转到主页面
+    router.push('/home')
+    
+  } catch (error) {
+    console.error('登录失败:', error)
+    ElMessage.error('登录失败，请检查用户名和密码')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 跳转到注册页面
+const goToRegister = () => {
+  router.push('/register')
+}
+
+</script>
+
 <template>
   <div class="login-container">
     <div class="login-card">
@@ -70,86 +184,6 @@
   </div>
 </template>
 
-<script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { useAuthStore } from '../store/auth.js'
-import { useUserInfoStore } from '@/store/userInfo.js'
-import { loginService } from '@/api/auth.js'
-
-const router = useRouter()
-const authStore = useAuthStore()
-const userInfoStore = useUserInfoStore()
-const loginFormRef = ref()
-const loading = ref(false)
-
-// 登录表单数据
-const loginForm = reactive({
-  username: '',
-  password: ''
-})
-
-// 表单验证规则
-const loginRules = {
-  username: [
-    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' },
-    { min: 3, max: 50, message: '用户名长度在 3 到 50 个字符', trigger: 'blur' }
-  ],
-  password: [
-    { required: true, message: '请输入密码', trigger: 'blur' },
-    { min: 6, max: 20, message: '密码长度在 6 到 20 个字符', trigger: 'blur' }
-  ]
-}
-
-// 处理登录
-const handleLogin = async () => {
-  if (!loginFormRef.value) return
-  
-  try {
-    const valid = await loginFormRef.value.validate()
-    if (!valid) return
-    
-    loading.value = true
-    
-    const result = await loginService({
-      username: loginForm.username,
-      password: loginForm.password
-    })
-    
-    console.log("登录返回结果", result)  // 调试输出登录结果
-    authStore.setAccessToken(result.accessToken)
-    authStore.setRefreshToken(result.refreshToken)
-    const userInfo = {
-      id: result.id,
-      username: result.username,
-      email: result.email,
-      avatar: result.avatar,
-      role: result.role
-    }
-    userInfoStore.setUserInfo(userInfo)
-
-    console.log("用户信息", userInfoStore.userInfo)  // 调试输出用户信息
-    console.log("认证信息", authStore.accessToken)  // 调试输出认证信息
-    console.log("刷新令牌", authStore.refreshToken)  // 调试输出刷新令牌
-
-    // 跳转到主页面
-    router.push('/home')
-    
-  } catch (error) {
-    console.error('登录失败:', error)
-    ElMessage.error('登录失败，请检查用户名和密码')
-  } finally {
-    loading.value = false
-  }
-}
-
-// 跳转到注册页面
-const goToRegister = () => {
-  router.push('/register')
-}
-
-</script>
 
 <style scoped>
 .login-container {
@@ -158,17 +192,18 @@ const goToRegister = () => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
   padding: 20px;
 }
 
 .login-card {
   width: 100%;
   max-width: 400px;
-  background: white;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #e2e8f0;
   border-radius: 16px;
   padding: 40px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 20px 40px rgba(148, 163, 184, 0.1);
   backdrop-filter: blur(10px);
 }
 
@@ -180,12 +215,12 @@ const goToRegister = () => {
 .login-header h1 {
   font-size: 28px;
   font-weight: 700;
-  color: #333;
+  color: #334155;
   margin-bottom: 8px;
 }
 
 .login-header p {
-  color: #666;
+  color: #64748b;
   font-size: 14px;
 }
 
@@ -215,7 +250,7 @@ const goToRegister = () => {
 .register-link {
   text-align: center;
   width: 100%;
-  color: #666;
+  color: #64748b;
   font-size: 14px;
 }
 
@@ -226,7 +261,7 @@ const goToRegister = () => {
 .login-footer {
   margin-top: 32px;
   text-align: center;
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(51, 65, 85, 0.7);
   font-size: 12px;
 }
 
@@ -244,16 +279,30 @@ const goToRegister = () => {
 
 /* 输入框样式优化 */
 :deep(.el-input__wrapper) {
+  background-color: #f8fafc;
   border-radius: 8px;
-  box-shadow: 0 0 0 1px #dcdfe6;
+  box-shadow: 0 0 0 1px #e2e8f0;
   transition: all 0.3s;
 }
 
 :deep(.el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px #c0c4cc;
+  box-shadow: 0 0 0 1px #cbd5e1;
 }
 
 :deep(.el-input__wrapper.is-focus) {
-  box-shadow: 0 0 0 1px #409eff;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
+
+:deep(.el-input__inner) {
+  color: #334155;
+  background-color: transparent;
+}
+
+:deep(.el-input__inner::placeholder) {
+  color: #94a3b8;
+}
+
+:deep(.el-icon) {
+  color: #64748b;
 }
 </style>
