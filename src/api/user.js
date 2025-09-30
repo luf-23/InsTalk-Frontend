@@ -1,4 +1,4 @@
-import request from "@/util/network/request";
+import request from "@/util/network/http/request";
 
 // 获取用户信息
 export const getUserInfoService = () => {

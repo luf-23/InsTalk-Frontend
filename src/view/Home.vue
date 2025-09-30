@@ -1,3 +1,43 @@
+<script setup>
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { useAuthStore } from '../store/auth.js'
+import { useUserInfoStore } from '../store/userInfo.js'
+
+const router = useRouter()
+const authStore = useAuthStore()
+const userInfoStore = useUserInfoStore()
+
+// 处理退出登录
+const handleLogout = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '确定要退出登录吗？',
+      '提示',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+    
+    // 清除 Pinia store 中的认证信息
+    authStore.clearAuth()
+    userInfoStore.clearUserInfo();
+    
+    
+    // 清除本地存储的登录信息
+    
+    ElMessage.success('已成功退出登录')
+    
+    // 跳转到登录页
+    router.push('/login')
+  } catch {
+    // 用户取消退出
+  }
+}
+</script>
+
 <template>
   <div class="home-container">
     <div class="header">
@@ -20,44 +60,6 @@
   </div>
 </template>
 
-<script setup>
-import { useRouter } from 'vue-router'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { useAuthStore } from '../store/auth.js'
-
-const router = useRouter()
-const authStore = useAuthStore()
-
-// 处理退出登录
-const handleLogout = async () => {
-  try {
-    await ElMessageBox.confirm(
-      '确定要退出登录吗？',
-      '提示',
-      {
-        confirmButtonText: '确定',
-        cancelButtonText: '取消',
-        type: 'warning',
-      }
-    )
-    
-    // 清除 Pinia store 中的认证信息
-    authStore.clearAuth()
-    
-    // 清除本地存储的登录信息
-    localStorage.removeItem('token')
-    localStorage.removeItem('rememberMe')
-    localStorage.removeItem('username')
-    
-    ElMessage.success('已成功退出登录')
-    
-    // 跳转到登录页
-    router.push('/login')
-  } catch {
-    // 用户取消退出
-  }
-}
-</script>
 
 <style scoped>
 .home-container {
