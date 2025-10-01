@@ -47,18 +47,6 @@ export const logoutService = () => {
     });
 };
 
-// 刷新token（通常不需要手动调用，拦截器会自动处理）
-export const refreshTokenService = (refreshToken) => {
-    return request({
-        url: '/auth/refresh',
-        method: 'post',
-        data: { refreshToken },
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    });
-};
-
 
 // 修改密码
 export const changePasswordService = (data) => {

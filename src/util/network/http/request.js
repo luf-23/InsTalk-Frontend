@@ -42,7 +42,7 @@ request.interceptors.request.use(
     
     // 使用accessToken
     if (authStore.accessToken) {
-      config.headers.Authorization = `Bearer ${authStore.accessToken}`;
+      config.headers.Authorization = `${authStore.accessToken}`;
     }
     
     console.log('请求发送：', config);
@@ -86,7 +86,7 @@ request.interceptors.response.use(
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(token => {
-          originalRequest.headers.Authorization = `Bearer ${token}`;
+          originalRequest.headers.Authorization = `${token}`;
           return request(originalRequest);
         }).catch(err => {
           return Promise.reject(err);
@@ -105,7 +105,7 @@ request.interceptors.response.use(
             'Content-Type': 'application/json'
           }
         });
-        
+        console.log('刷新Token响应：', response);
         const { accessToken, refreshToken } = response.data;
         
         // 更新tokens
@@ -115,7 +115,7 @@ request.interceptors.response.use(
         processQueue(null, accessToken);
         
         // 重新发送原始请求
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+        originalRequest.headers.Authorization = `${accessToken}`;
         return request(originalRequest);
         
       } catch (refreshError) {

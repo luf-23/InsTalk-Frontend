@@ -52,7 +52,7 @@ export const deleteFriendService = (params) => {
 //获取好友列表
 export const getFriendListService = () => {
     return request({
-        url: '/friendship/friendlist',
+        url: '/friendship/friendList',
         method: 'get',
         headers: {
             'Content-Type': 'application/json'
@@ -63,7 +63,7 @@ export const getFriendListService = () => {
 //获取好友申请列表
 export const getPendingListService = () => {
     return request({
-        url: '/friendship/pendinglist',
+        url: '/friendship/pendingList',
         method: 'get',
         headers: {
             'Content-Type': 'application/json'
