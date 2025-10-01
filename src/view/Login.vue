@@ -1,10 +1,12 @@
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../store/auth.js'
 import { useUserInfoStore } from '@/store/userInfo.js'
 import { loginService } from '@/api/auth.js'
+import { initDynamicBackground, destroyDynamicBackground } from '@/css/dynamic-background.js'
+import '@/css/dynamic-background.css'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -110,6 +112,15 @@ const goToRegister = () => {
   router.push('/register')
 }
 
+// 生命周期钩子
+onMounted(() => {
+  initDynamicBackground()
+})
+
+onUnmounted(() => {
+  destroyDynamicBackground()
+})
+
 </script>
 
 <template>
@@ -192,19 +203,46 @@ const goToRegister = () => {
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 50%, #cbd5e1 100%);
   padding: 20px;
+  position: relative;
+  z-index: 2;
 }
 
 .login-card {
   width: 100%;
   max-width: 400px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #e2e8f0;
-  border-radius: 16px;
   padding: 40px;
-  box-shadow: 0 20px 40px rgba(148, 163, 184, 0.1);
-  backdrop-filter: blur(10px);
+  border-radius: 16px;
+  /* 应用动态背景增强样式 */
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 
+    0 15px 35px rgba(135, 206, 235, 0.08),
+    0 5px 15px rgba(0, 0, 0, 0.04),
+    0 0 0 1px rgba(255, 255, 255, 0.3) inset;
+  position: relative;
+  overflow: hidden;
+}
+
+.login-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(173, 216, 230, 0.5), transparent);
+}
+
+.login-card::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(173, 216, 230, 0.3), transparent);
 }
 
 .login-header {
@@ -304,5 +342,28 @@ const goToRegister = () => {
 
 :deep(.el-icon) {
   color: #64748b;
+}
+
+/* 去除浏览器自动填充时的蓝色背景 */
+:deep(.el-input__inner:-webkit-autofill),
+:deep(.el-input__inner:-webkit-autofill:hover),
+:deep(.el-input__inner:-webkit-autofill:focus),
+:deep(.el-input__inner:-webkit-autofill:active) {
+  -webkit-box-shadow: 0 0 0 1000px #f8fafc inset !important;
+  -webkit-text-fill-color: #334155 !important;
+  background-color: #f8fafc !important;
+  background-image: none !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* Firefox 浏览器的自动填充样式 */
+:deep(.el-input__inner:-moz-autofill) {
+  background-color: #f8fafc !important;
+  box-shadow: 0 0 0 1000px #f8fafc inset !important;
+}
+
+/* Edge/IE 浏览器的自动填充样式 */
+:deep(.el-input__inner:-ms-input-placeholder) {
+  background-color: #f8fafc !important;
 }
 </style>
