@@ -105,7 +105,6 @@ request.interceptors.response.use(
             'Content-Type': 'application/json'
           }
         });
-        console.log('刷新Token响应：', response);
         const { accessToken, refreshToken } = response.data;
         
         // 更新tokens
