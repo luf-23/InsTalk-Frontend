@@ -1,20 +1,38 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useAuthStore } from '../store/auth.js'
 import { useUserInfoStore } from '../store/userInfo.js'
 import { friendshipStore } from '../store/friendship.js'
 import { groupStore } from '../store/group.js'
+import { messageStore } from '../store/message.js'
+import { 
+  Search, 
+  MoreFilled, 
+  Refresh, 
+  ChatDotRound, 
+  Plus, 
+  ArrowLeft,
+  Picture,
+  Document,
+  Promotion
+} from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const userInfoStore = useUserInfoStore()
 const friendStore = friendshipStore()
 const groupData = groupStore()
+const msgStore = messageStore()
 
-// 当前激活的选项卡
+// 主界面状态
+const mainView = ref('chat') // 'chat' | 'friends' | 'groups'
 const activeTab = ref('friends')
+
+// 聊天相关状态
+const currentInputMessage = ref('')
+const messageListRef = ref(null)
 
 // 搜索相关
 const searchUsername = ref('')
@@ -47,7 +65,20 @@ onMounted(async () => {
   
   // 加载我的群组
   await groupData.fetchMyGroups()
+  
+  // 加载所有群组（用于发现功能）
+  await groupData.fetchAllGroups()
+  
+  // 加载消息历史
+  await msgStore.fetchMessageHistory()
 })
+
+// 监听当前聊天变化，滚动到底部
+watch(() => msgStore.getCurrentChatMessages.value, () => {
+  nextTick(() => {
+    scrollToBottom()
+  })
+}, { deep: true })
 
 // 处理退出登录
 const handleLogout = async () => {
@@ -62,9 +93,12 @@ const handleLogout = async () => {
       }
     )
     
-    // 清除 Pinia store 中的认证信息
+    // 清除 Pinia store 中的所有信息
     authStore.clearAuth()
     userInfoStore.clearUserInfo()
+    friendStore.clearFriendshipData()
+    groupData.clearGroupData()
+    msgStore.clearMessageData()
     
     ElMessage.success('已成功退出登录')
     
@@ -73,6 +107,21 @@ const handleLogout = async () => {
   } catch {
     // 用户取消退出
   }
+}
+
+// 界面切换
+const switchToChat = () => {
+  mainView.value = 'chat'
+}
+
+const switchToFriends = () => {
+  mainView.value = 'friends'
+  activeTab.value = 'friends'
+}
+
+const switchToGroups = () => {
+  mainView.value = 'groups'
+  activeTab.value = 'groups'
 }
 
 // 好友功能相关
@@ -139,18 +188,104 @@ const handleCreateGroupSubmit = async () => {
 }
 
 const handleJoinGroup = async (groupId) => {
-  const loading = ElLoading.service({
-    lock: true,
-    text: '加入群组中...',
-    background: 'rgba(0, 0, 0, 0.7)',
-  })
-  
-  await groupData.joinGroup(groupId)
-  loading.close()
+  try {
+    await groupData.joinGroup(groupId)
+  } catch (error) {
+    console.error('加入群组失败:', error)
+  }
 }
 
 const refreshGroups = async () => {
-  await groupData.fetchAllGroups()
+  try {
+    await groupData.fetchAllGroups()
+    const available = availableGroups.value.length
+    const total = groupData.allGroups.length
+    
+    // 详细调试信息
+    console.group('🔍 群组刷新完成')
+    console.log('📊 统计信息:', {
+      total,
+      available,
+      joined: groupData.myGroups.length,
+      currentUserId: userInfoStore.userInfo?.id
+    })
+    console.log('📋 所有群组:', groupData.allGroups.map(g => ({
+      id: g.id,
+      name: g.name,
+      members: g.members?.length || 0,
+      isMember: isAlreadyGroupMember(g.id)
+    })))
+    console.log('👥 我的群组:', groupData.myGroups.map(g => ({
+      id: g.id,
+      name: g.name,
+      members: g.members?.length || 0
+    })))
+    console.groupEnd()
+    
+    if (available > 0) {
+      ElMessage.success(`发现 ${available} 个可加入的群组，共 ${total} 个群组`)
+    } else if (total > 0) {
+      ElMessage.info(`已加载 ${total} 个群组，您已加入所有可见群组`)
+    } else {
+      ElMessage.info('暂无可用群组，请联系管理员创建群组')
+    }
+  } catch (error) {
+    console.error('刷新群组列表失败:', error)
+    ElMessage.error('刷新群组列表失败')
+  }
+}
+
+// 聊天功能相关
+const startChatWithFriend = (friend) => {
+  msgStore.setCurrentChat(friend, 'friend')
+  mainView.value = 'chat'
+}
+
+const startChatWithGroup = (group) => {
+  msgStore.setCurrentChat(group, 'group')
+  mainView.value = 'chat'
+}
+
+const sendMessage = async () => {
+  if (!currentInputMessage.value.trim() || !msgStore.currentChat) return
+  
+  const messageData = {
+    content: currentInputMessage.value.trim(),
+    messageType: 'TEXT'
+  }
+  
+  if (msgStore.chatType === 'friend') {
+    messageData.receiverId = msgStore.currentChat.id
+  } else if (msgStore.chatType === 'group') {
+    messageData.groupId = msgStore.currentChat.id
+  }
+  
+  const success = await msgStore.sendMessage(messageData)
+  if (success) {
+    currentInputMessage.value = ''
+  }
+}
+
+const scrollToBottom = () => {
+  if (messageListRef.value) {
+    messageListRef.value.scrollTop = messageListRef.value.scrollHeight
+  }
+}
+
+const formatMessageTime = (time) => {
+  if (!time) return ''
+  const date = new Date(time)
+  const now = new Date()
+  
+  if (date.toDateString() === now.toDateString()) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  } else {
+    return date.toLocaleDateString('zh-CN') + ' ' + date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+  }
+}
+
+const isMyMessage = (message) => {
+  return message.senderId === userInfoStore.userInfo?.id
 }
 
 // 显示好友或群组成员数量
@@ -163,228 +298,588 @@ const isAlreadyGroupMember = (groupId) => {
   return groupData.isGroupMember(groupId)
 }
 
+// 计算可加入的群组（排除已经加入的群组）
+const availableGroups = computed(() => {
+  const available = groupData.allGroups.filter(group => !isAlreadyGroupMember(group.id))
+  console.log('计算可加入群组:', {
+    allGroups: groupData.allGroups.length,
+    myGroups: groupData.myGroups.length,
+    available: available.length,
+    currentUserId: userInfoStore.userInfo?.id
+  })
+  return available
+})
+
+// 计算群组统计信息
+const groupStats = computed(() => {
+  return {
+    total: groupData.allGroups.length,
+    joined: groupData.myGroups.length,
+    available: availableGroups.value.length
+  }
+})
+
+// 获取好友昵称或用户名
+const getFriendName = (friendId) => {
+  const friend = friendStore.friends.find(f => f.id === friendId)
+  return friend ? (friend.nickname || friend.username) : `用户${friendId}`
+}
+
+// 获取群组名称
+const getGroupName = (groupId) => {
+  const group = groupData.myGroups.find(g => g.id === groupId) || 
+                groupData.allGroups.find(g => g.id === groupId)
+  return group ? group.name : `群组${groupId}`
+}
+
 // 计算用户详情
 const userInfo = computed(() => {
   return userInfoStore.userInfo || {}
+})
+
+// 计算聊天标题
+const chatTitle = computed(() => {
+  if (!msgStore.currentChat) return ''
+  
+  if (msgStore.chatType === 'friend') {
+    return getFriendName(msgStore.currentChat.id)
+  } else if (msgStore.chatType === 'group') {
+    return getGroupName(msgStore.currentChat.id)
+  }
+  return ''
+})
+
+// 计算聊天列表（包含好友和群组的最近消息）
+const chatList = computed(() => {
+  const chats = []
+  
+  // 添加有消息的好友
+  friendStore.friends.forEach(friend => {
+    const messages = msgStore.messages.filter(msg => 
+      (msg.senderId === friend.id || msg.receiverId === friend.id) && !msg.groupId
+    )
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1]
+      chats.push({
+        ...friend,
+        type: 'friend',
+        lastMessage,
+        lastMessageTime: lastMessage.sendAt
+      })
+    } else {
+      // 没有消息的好友也显示
+      chats.push({
+        ...friend,
+        type: 'friend',
+        lastMessage: null,
+        lastMessageTime: null
+      })
+    }
+  })
+  
+  // 添加有消息的群组
+  groupData.myGroups.forEach(group => {
+    const messages = msgStore.messages.filter(msg => msg.groupId === group.id)
+    if (messages.length > 0) {
+      const lastMessage = messages[messages.length - 1]
+      chats.push({
+        ...group,
+        type: 'group',
+        lastMessage,
+        lastMessageTime: lastMessage.sendAt
+      })
+    } else {
+      // 没有消息的群组也显示
+      chats.push({
+        ...group,
+        type: 'group',
+        lastMessage: null,
+        lastMessageTime: null
+      })
+    }
+  })
+  
+  // 按最后消息时间排序
+  return chats.sort((a, b) => {
+    if (!a.lastMessageTime && !b.lastMessageTime) return 0
+    if (!a.lastMessageTime) return 1
+    if (!b.lastMessageTime) return -1
+    return new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
+  })
 })
 </script>
 
 <template>
   <div class="home-container">
+    <!-- 顶部导航栏 -->
     <div class="header">
       <div class="header-content">
         <h1>InsTalk</h1>
+        
+        <!-- 导航按钮 -->
+        <div class="nav-buttons">
+          <el-button 
+            :type="mainView === 'chat' ? 'primary' : ''"
+            @click="switchToChat"
+            :icon="ChatDotRound"
+          >
+            聊天
+          </el-button>
+          <el-button 
+            :type="mainView === 'friends' ? 'primary' : ''"
+            @click="switchToFriends"
+          >
+            好友
+          </el-button>
+          <el-button 
+            :type="mainView === 'groups' ? 'primary' : ''"
+            @click="switchToGroups"
+          >
+            群组
+          </el-button>
+        </div>
+        
         <div class="user-menu">
-          <span class="username">{{ userInfo.nickname || '欢迎回来！' }}</span>
+          <span class="username">{{ userInfo.nickname || userInfo.username || '欢迎回来！' }}</span>
           <el-button type="primary" @click="handleLogout">退出登录</el-button>
         </div>
       </div>
     </div>
     
     <div class="main-content">
-      <div class="chat-container">
-        <!-- 侧边栏 -->
-        <div class="sidebar">
-          <el-tabs v-model="activeTab" class="tabs-container">
-            <!-- 好友列表选项卡 -->
-            <el-tab-pane label="好友" name="friends">
-              <div class="search-bar">
-                <el-input
-                  v-model="searchUsername"
-                  placeholder="搜索用户名"
-                  @keyup.enter="handleSearch"
-                >
-                  <template #append>
-                    <el-button @click="handleSearch" :disabled="friendStore.loading.search">
-                      <el-icon><Search /></el-icon>
-                    </el-button>
-                  </template>
-                </el-input>
-              </div>
-              
-              <!-- 好友申请列表 -->
-              <div class="section-title">
-                <span>好友申请</span>
-                <el-badge :value="friendStore.pendingRequests.length" :hidden="!friendStore.pendingRequests.length" type="danger" />
-              </div>
-              
-              <el-skeleton :loading="friendStore.loading.pending" animated :count="3" v-if="friendStore.loading.pending">
-                <template #template>
-                  <div class="friend-request-item skeleton-item">
-                    <el-skeleton-item variant="circle" style="width: 40px; height: 40px;" />
-                    <div style="flex: 1; margin-left: 16px;">
-                      <el-skeleton-item variant="text" style="width: 60%;" />
-                      <el-skeleton-item variant="text" style="width: 40%;" />
-                    </div>
-                  </div>
-                </template>
-              </el-skeleton>
-              
-              <div v-else-if="friendStore.pendingRequests.length === 0" class="empty-list">
-                暂无好友申请
-              </div>
-              
-              <div v-else class="friend-request-list">
-                <div v-for="request in friendStore.pendingRequests" :key="request.id" class="friend-request-item">
-                  <el-avatar :size="40" :src="request.avatar">
-                    {{ request.username.charAt(0).toUpperCase() }}
-                  </el-avatar>
-                  <div class="request-info">
-                    <div class="request-name">{{ request.nickname || request.username }}</div>
-                    <div class="request-actions">
-                      <el-button size="small" type="primary" @click="handleAcceptRequest(request.id)">
-                        接受
-                      </el-button>
-                      <el-button size="small" @click="handleRejectRequest(request.id)">
-                        拒绝
-                      </el-button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <!-- 好友列表 -->
-              <div class="section-title">我的好友</div>
-              
-              <el-skeleton :loading="friendStore.loading.friends" animated :count="5" v-if="friendStore.loading.friends">
-                <template #template>
-                  <div class="friend-item skeleton-item">
-                    <el-skeleton-item variant="circle" style="width: 40px; height: 40px;" />
-                    <el-skeleton-item variant="text" style="width: 60%; margin-left: 16px;" />
-                  </div>
-                </template>
-              </el-skeleton>
-              
-              <div v-else-if="friendStore.friends.length === 0" class="empty-list">
-                暂无好友，快去添加吧
-              </div>
-              
-              <div v-else class="friend-list">
-                <div v-for="friend in friendStore.friends" :key="friend.id" class="friend-item">
-                  <el-avatar :size="40" :src="friend.avatar">
-                    {{ friend.username.charAt(0).toUpperCase() }}
-                  </el-avatar>
-                  <div class="friend-name">{{ friend.nickname || friend.username }}</div>
-                  <div class="friend-actions">
-                    <el-dropdown trigger="click">
-                      <el-icon><MoreFilled /></el-icon>
-                      <template #dropdown>
-                        <el-dropdown-menu>
-                          <el-dropdown-item @click="handleDeleteFriend(friend.id)">
-                            删除好友
-                          </el-dropdown-item>
-                        </el-dropdown-menu>
-                      </template>
-                    </el-dropdown>
-                  </div>
-                </div>
-              </div>
-            </el-tab-pane>
+      <!-- 聊天界面 -->
+      <div v-if="mainView === 'chat'" class="chat-container">
+        <!-- 聊天列表 -->
+        <div class="chat-sidebar">
+          <div class="chat-list-header">
+            <h3>最近聊天</h3>
+          </div>
+          
+          <div class="chat-list">
+            <div v-if="chatList.length === 0" class="empty-list">
+              <el-empty description="暂无聊天记录" :image-size="80">
+                <el-button type="primary" @click="switchToFriends">添加好友开始聊天</el-button>
+              </el-empty>
+            </div>
             
-            <!-- 群组选项卡 -->
-            <el-tab-pane label="群组" name="groups">
-              <div class="group-actions">
-                <el-button type="primary" @click="createGroupDialog = true">创建群组</el-button>
-                <el-button @click="refreshGroups">
-                  <el-icon><Refresh /></el-icon>
-                  发现群组
-                </el-button>
-              </div>
-              
-              <!-- 我的群组列表 -->
-              <div class="section-title">我的群组</div>
-              
-              <el-skeleton :loading="groupData.loading.myGroups" animated :count="3" v-if="groupData.loading.myGroups">
-                <template #template>
-                  <div class="group-item skeleton-item">
-                    <el-skeleton-item variant="circle" style="width: 40px; height: 40px;" />
-                    <div style="flex: 1; margin-left: 16px;">
-                      <el-skeleton-item variant="text" style="width: 70%;" />
-                      <el-skeleton-item variant="text" style="width: 50%;" />
-                    </div>
+            <div v-else>
+              <div 
+                v-for="chat in chatList" 
+                :key="`${chat.type}_${chat.id}`" 
+                class="chat-list-item"
+                :class="{ active: msgStore.currentChat?.id === chat.id && msgStore.chatType === chat.type }"
+                @click="chat.type === 'friend' ? startChatWithFriend(chat) : startChatWithGroup(chat)"
+              >
+                <el-avatar :size="50" :src="chat.avatar">
+                  {{ (chat.nickname || chat.name || chat.username).charAt(0).toUpperCase() }}
+                </el-avatar>
+                <div class="chat-item-info">
+                  <div class="chat-name">
+                    {{ chat.type === 'friend' ? (chat.nickname || chat.username) : chat.name }}
+                    <el-tag v-if="chat.type === 'group'" size="small" type="info">群</el-tag>
                   </div>
-                </template>
-              </el-skeleton>
-              
-              <div v-else-if="groupData.myGroups.length === 0" class="empty-list">
-                暂无群组，创建或加入一个吧
-              </div>
-              
-              <div v-else class="group-list">
-                <div v-for="group in groupData.myGroups" :key="group.id" class="group-item">
-                  <div class="group-avatar">
-                    <el-avatar :size="40">{{ group.name.charAt(0).toUpperCase() }}</el-avatar>
+                  <div class="last-message" v-if="chat.lastMessage">
+                    {{ chat.lastMessage.content }}
                   </div>
-                  <div class="group-info">
-                    <div class="group-name">{{ group.name }}</div>
-                    <div class="group-meta">
-                      <el-tag size="small">{{ memberCount(group.members) }}人</el-tag>
-                    </div>
+                  <div class="last-message empty" v-else>
+                    点击开始聊天
                   </div>
                 </div>
-              </div>
-              
-              <!-- 所有群组列表 -->
-              <div class="section-title">
-                <span>发现群组</span>
-                <el-tag size="small" v-if="groupData.allGroups.length">共{{ groupData.allGroups.length }}个</el-tag>
-              </div>
-              
-              <el-skeleton :loading="groupData.loading.allGroups" animated :count="3" v-if="groupData.loading.allGroups">
-                <template #template>
-                  <div class="group-item skeleton-item">
-                    <el-skeleton-item variant="circle" style="width: 40px; height: 40px;" />
-                    <div style="flex: 1; margin-left: 16px;">
-                      <el-skeleton-item variant="text" style="width: 70%;" />
-                      <el-skeleton-item variant="text" style="width: 50%;" />
-                    </div>
-                  </div>
-                </template>
-              </el-skeleton>
-              
-              <div v-else-if="!groupData.allGroups.length" class="empty-list">
-                点击上方"发现群组"按钮查找群组
-              </div>
-              
-              <div v-else class="group-list">
-                <div v-for="group in groupData.allGroups" :key="group.id" class="group-item">
-                  <div class="group-avatar">
-                    <el-avatar :size="40">{{ group.name.charAt(0).toUpperCase() }}</el-avatar>
-                  </div>
-                  <div class="group-info">
-                    <div class="group-name">{{ group.name }}</div>
-                    <div class="group-meta">
-                      <el-tag size="small">{{ memberCount(group.members) }}人</el-tag>
-                      <div class="group-description" v-if="group.description">{{ group.description }}</div>
-                    </div>
-                  </div>
-                  <div class="group-actions">
-                    <el-button 
-                      size="small" 
-                      type="primary" 
-                      :disabled="isAlreadyGroupMember(group.id)"
-                      @click="handleJoinGroup(group.id)"
-                    >
-                      {{ isAlreadyGroupMember(group.id) ? '已加入' : '加入' }}
-                    </el-button>
-                  </div>
+                <div class="chat-time" v-if="chat.lastMessageTime">
+                  {{ formatMessageTime(chat.lastMessageTime) }}
                 </div>
               </div>
-            </el-tab-pane>
-          </el-tabs>
+            </div>
+          </div>
         </div>
         
-        <!-- 聊天区域 -->
-        <div class="chat-area">
-          <div class="chat-placeholder">
-            <el-empty description="选择联系人或群组开始聊天">
-              <el-button type="primary">聊天功能开发中</el-button>
-            </el-empty>
+        <!-- 聊天窗口 -->
+        <div class="chat-window">
+          <!-- 聊天头部 -->
+          <div v-if="msgStore.currentChat" class="chat-header">
+            <div class="chat-info">
+              <el-avatar :size="40" :src="msgStore.currentChat.avatar">
+                {{ (msgStore.currentChat.nickname || msgStore.currentChat.name || msgStore.currentChat.username).charAt(0).toUpperCase() }}
+              </el-avatar>
+              <div class="chat-title-info">
+                <div class="chat-title">{{ chatTitle }}</div>
+                <div class="chat-subtitle">
+                  {{ msgStore.chatType === 'group' ? `群聊 · ${memberCount(msgStore.currentChat.members)}人` : '私聊' }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 消息列表 -->
+          <div class="message-container" ref="messageListRef">
+            <div v-if="!msgStore.currentChat" class="no-chat-selected">
+              <el-empty description="选择一个聊天开始对话">
+                <el-button type="primary" @click="switchToFriends">
+                  <el-icon><Plus /></el-icon>
+                  开始新的聊天
+                </el-button>
+              </el-empty>
+            </div>
+            
+            <div v-else-if="msgStore.loading.messages" class="message-loading">
+              <el-skeleton animated :rows="5" />
+            </div>
+            
+            <div v-else class="message-list">
+              <div v-if="msgStore.getCurrentChatMessages.length === 0" class="empty-messages">
+                <el-empty description="还没有消息，发送第一条消息吧！" :image-size="80" />
+              </div>
+              
+              <div v-else>
+                <div 
+                  v-for="message in msgStore.getCurrentChatMessages" 
+                  :key="message.id" 
+                  class="message-item"
+                  :class="{ 'my-message': isMyMessage(message), 'other-message': !isMyMessage(message) }"
+                >
+                  <el-avatar 
+                    v-if="!isMyMessage(message)" 
+                    :size="36" 
+                    class="message-avatar"
+                  >
+                    {{ getFriendName(message.senderId).charAt(0).toUpperCase() }}
+                  </el-avatar>
+                  
+                  <div class="message-content">
+                    <div v-if="!isMyMessage(message) && msgStore.chatType === 'group'" class="message-sender">
+                      {{ getFriendName(message.senderId) }}
+                    </div>
+                    <div class="message-bubble">
+                      <div class="message-text">{{ message.content }}</div>
+                      <div class="message-time">{{ formatMessageTime(message.sendAt) }}</div>
+                    </div>
+                  </div>
+                  
+                  <el-avatar 
+                    v-if="isMyMessage(message)" 
+                    :size="36" 
+                    class="message-avatar"
+                    :src="userInfo.avatar"
+                  >
+                    {{ (userInfo.nickname || userInfo.username).charAt(0).toUpperCase() }}
+                  </el-avatar>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 消息输入区 -->
+          <div v-if="msgStore.currentChat" class="message-input-area">
+            <div class="input-toolbar">
+              <!-- 工具栏可以添加表情、图片、文件等功能 -->
+            </div>
+            <div class="input-container">
+              <el-input
+                v-model="currentInputMessage"
+                type="textarea"
+                :rows="3"
+                placeholder="输入消息..."
+                @keydown.enter.exact="sendMessage"
+                @keydown.enter.shift.exact.prevent
+                resize="none"
+              />
+              <el-button 
+                type="primary" 
+                @click="sendMessage"
+                :loading="msgStore.loading.send"
+                :disabled="!currentInputMessage.trim()"
+                class="send-button"
+              >
+                <el-icon><Promotion /></el-icon>
+              </el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 好友管理界面 -->
+      <div v-if="mainView === 'friends'" class="friends-container">
+        <div class="page-header">
+          <h2>好友管理</h2>
+          <el-button @click="switchToChat" :icon="ArrowLeft">返回聊天</el-button>
+        </div>
+        
+        <div class="friends-content">
+          <!-- 搜索栏 -->
+          <div class="search-section">
+            <h3>添加好友</h3>
+            <div class="search-bar">
+              <el-input
+                v-model="searchUsername"
+                placeholder="搜索用户名"
+                @keyup.enter="handleSearch"
+                size="large"
+              >
+                <template #append>
+                  <el-button @click="handleSearch" :loading="friendStore.loading.search">
+                    <el-icon><Search /></el-icon>
+                  </el-button>
+                </template>
+              </el-input>
+            </div>
+          </div>
+          
+          <!-- 好友申请 -->
+          <div class="requests-section">
+            <div class="section-title">
+              <h3>好友申请</h3>
+              <el-badge :value="friendStore.pendingRequests.length" :hidden="!friendStore.pendingRequests.length" type="danger" />
+            </div>
+            
+            <el-skeleton :loading="friendStore.loading.pending" animated :count="3" v-if="friendStore.loading.pending">
+              <template #template>
+                <div class="friend-request-item skeleton-item">
+                  <el-skeleton-item variant="circle" style="width: 50px; height: 50px;" />
+                  <div style="flex: 1; margin-left: 16px;">
+                    <el-skeleton-item variant="text" style="width: 60%;" />
+                    <el-skeleton-item variant="text" style="width: 40%;" />
+                  </div>
+                </div>
+              </template>
+            </el-skeleton>
+            
+            <div v-else-if="friendStore.pendingRequests.length === 0" class="empty-section">
+              <el-empty description="暂无好友申请" :image-size="60" />
+            </div>
+            
+            <div v-else class="request-list">
+              <div v-for="request in friendStore.pendingRequests" :key="request.id" class="friend-request-item">
+                <el-avatar :size="50" :src="request.avatar">
+                  {{ request.username.charAt(0).toUpperCase() }}
+                </el-avatar>
+                <div class="request-info">
+                  <div class="request-name">{{ request.nickname || request.username }}</div>
+                  <div class="request-username">@{{ request.username }}</div>
+                </div>
+                <div class="request-actions">
+                  <el-button size="small" type="primary" @click="handleAcceptRequest(request.id)">
+                    接受
+                  </el-button>
+                  <el-button size="small" @click="handleRejectRequest(request.id)">
+                    拒绝
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- 好友列表 -->
+          <div class="friends-section">
+            <div class="section-title">
+              <h3>我的好友</h3>
+              <el-tag size="small">{{ friendStore.friends.length }}人</el-tag>
+            </div>
+            
+            <el-skeleton :loading="friendStore.loading.friends" animated :count="5" v-if="friendStore.loading.friends">
+              <template #template>
+                <div class="friend-item skeleton-item">
+                  <el-skeleton-item variant="circle" style="width: 50px; height: 50px;" />
+                  <el-skeleton-item variant="text" style="width: 60%; margin-left: 16px;" />
+                </div>
+              </template>
+            </el-skeleton>
+            
+            <div v-else-if="friendStore.friends.length === 0" class="empty-section">
+              <el-empty description="暂无好友，快去添加吧" :image-size="60">
+                <el-button type="primary" @click="searchUsername = ''; handleSearch()">搜索用户</el-button>
+              </el-empty>
+            </div>
+            
+            <div v-else class="friend-list">
+              <div v-for="friend in friendStore.friends" :key="friend.id" class="friend-item">
+                <el-avatar :size="50" :src="friend.avatar">
+                  {{ friend.username.charAt(0).toUpperCase() }}
+                </el-avatar>
+                <div class="friend-info">
+                  <div class="friend-name">{{ friend.nickname || friend.username }}</div>
+                  <div class="friend-username">@{{ friend.username }}</div>
+                </div>
+                <div class="friend-actions">
+                  <el-button size="small" type="primary" @click="startChatWithFriend(friend)">
+                    聊天
+                  </el-button>
+                  <el-dropdown trigger="click">
+                    <el-button size="small">
+                      <el-icon><MoreFilled /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click="handleDeleteFriend(friend.id)">
+                          删除好友
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- 群组管理界面 -->
+      <div v-if="mainView === 'groups'" class="groups-container">
+        <div class="page-header">
+          <h2>群组管理</h2>
+          <div class="header-actions">
+            <el-button type="primary" @click="createGroupDialog = true">
+              <el-icon><Plus /></el-icon>
+              创建群组
+            </el-button>
+            <el-button @click="refreshGroups" :loading="groupData.loading.allGroups">
+              <el-icon><Refresh /></el-icon>
+              发现群组
+            </el-button>
+            <el-button @click="switchToChat" :icon="ArrowLeft">返回聊天</el-button>
+          </div>
+        </div>
+        
+        <div class="groups-content">
+          <!-- 我的群组 -->
+          <div class="my-groups-section">
+            <div class="section-title">
+              <h3>我的群组</h3>
+              <el-tag size="small">{{ groupData.myGroups.length }}个</el-tag>
+            </div>
+            
+            <el-skeleton :loading="groupData.loading.myGroups" animated :count="3" v-if="groupData.loading.myGroups">
+              <template #template>
+                <div class="group-item skeleton-item">
+                  <el-skeleton-item variant="circle" style="width: 50px; height: 50px;" />
+                  <div style="flex: 1; margin-left: 16px;">
+                    <el-skeleton-item variant="text" style="width: 70%;" />
+                    <el-skeleton-item variant="text" style="width: 50%;" />
+                  </div>
+                </div>
+              </template>
+            </el-skeleton>
+            
+            <div v-else-if="groupData.myGroups.length === 0" class="empty-section">
+              <el-empty description="暂无群组，创建或加入一个吧" :image-size="60">
+                <el-button type="primary" @click="createGroupDialog = true">创建群组</el-button>
+              </el-empty>
+            </div>
+            
+            <div v-else class="group-list">
+              <div v-for="group in groupData.myGroups" :key="group.id" class="group-item">
+                <el-avatar :size="50">{{ group.name.charAt(0).toUpperCase() }}</el-avatar>
+                <div class="group-info">
+                  <div class="group-name">{{ group.name }}</div>
+                  <div class="group-meta">
+                    <el-tag size="small">{{ memberCount(group.members) }}人</el-tag>
+                    <span class="group-description" v-if="group.description">{{ group.description }}</span>
+                  </div>
+                </div>
+                <div class="group-actions">
+                  <el-button size="small" type="primary" @click="startChatWithGroup(group)">
+                    聊天
+                  </el-button>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+              <!-- 发现群组 -->
+              <div class="discover-groups-section">
+                <div class="section-title">
+                  <h3>发现群组</h3>
+                  <div class="group-stats">
+                    <el-tag size="small" type="info" v-if="groupStats.total > 0">
+                      总共{{ groupStats.total }}个
+                    </el-tag>
+                    <el-tag size="small" type="success" v-if="groupStats.available > 0">
+                      可加入{{ groupStats.available }}个
+                    </el-tag>
+                  </div>
+                </div>            <el-skeleton :loading="groupData.loading.allGroups" animated :count="3" v-if="groupData.loading.allGroups">
+              <template #template>
+                <div class="group-item skeleton-item">
+                  <el-skeleton-item variant="circle" style="width: 50px; height: 50px;" />
+                  <div style="flex: 1; margin-left: 16px;">
+                    <el-skeleton-item variant="text" style="width: 70%;" />
+                    <el-skeleton-item variant="text" style="width: 50%;" />
+                  </div>
+                </div>
+              </template>
+            </el-skeleton>
+            
+            <div v-else-if="!groupData.allGroups.length" class="empty-section">
+              <el-empty description="点击上方'发现群组'按钮查找群组" :image-size="60">
+                <el-button type="primary" @click="refreshGroups" :loading="groupData.loading.allGroups">发现群组</el-button>
+              </el-empty>
+            </div>
+            
+            <!-- 显示所有群组，区分已加入和可加入 -->
+            <div v-else class="group-list">
+              <!-- 群组状态提示 -->
+              <div v-if="groupData.allGroups.length > 0" class="groups-status-header">
+                <div v-if="availableGroups.length > 0" style="margin-bottom: 16px;">
+                  <el-alert
+                    :title="`找到 ${availableGroups.length} 个可加入的群组`"
+                    type="success"
+                    :closable="false"
+                    show-icon
+                  />
+                </div>
+                
+                <div v-if="groupData.myGroups.length > 0 && availableGroups.length === 0" style="margin-bottom: 16px;">
+                  <el-alert
+                    title="您已加入所有可见的群组"
+                    type="info"
+                    :closable="false"
+                    show-icon
+                  />
+                </div>
+                
+                <!-- 图例 -->
+                <div class="group-legend" style="margin-bottom: 16px;">
+                  <el-tag size="small" type="success">绿框 = 可加入</el-tag>
+                  <el-tag size="small" type="info">灰框 = 已加入</el-tag>
+                </div>
+              </div>
+              
+              <div v-for="group in groupData.allGroups" :key="group.id" class="group-item" :class="{ 'joined-group': isAlreadyGroupMember(group.id), 'available-group': !isAlreadyGroupMember(group.id) }">
+                <el-avatar :size="50">{{ group.name.charAt(0).toUpperCase() }}</el-avatar>
+                <div class="group-info">
+                  <div class="group-name">{{ group.name }}</div>
+                  <div class="group-meta">
+                    <el-tag size="small">{{ memberCount(group.members) }}人</el-tag>
+                    <div class="group-description" v-if="group.description">{{ group.description }}</div>
+                  </div>
+                </div>
+                <div class="group-actions">
+                  <!-- 已加入的群组显示聊天按钮 -->
+                  <el-button 
+                    v-if="isAlreadyGroupMember(group.id)"
+                    size="small" 
+                    type="success" 
+                    @click="startChatWithGroup(group)"
+                  >
+                    开始聊天
+                  </el-button>
+                  
+                  <!-- 未加入的群组显示加入按钮 -->
+                  <el-button 
+                    v-else
+                    size="small" 
+                    type="primary" 
+                    @click="handleJoinGroup(group.id)"
+                    :loading="groupData.loading.join"
+                  >
+                    加入群组
+                  </el-button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
   
   <!-- 用户搜索结果对话框 -->
   <el-dialog
@@ -458,6 +953,7 @@ const userInfo = computed(() => {
       </el-button>
     </template>
   </el-dialog>
+</div>
 </template>
 
 
@@ -465,12 +961,16 @@ const userInfo = computed(() => {
 .home-container {
   min-height: 100vh;
   background-color: #f5f5f5;
+  display: flex;
+  flex-direction: column;
 }
 
+/* 顶部导航栏 */
 .header {
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   padding: 0 20px;
+  z-index: 100;
 }
 
 .header-content {
@@ -478,7 +978,7 @@ const userInfo = computed(() => {
   justify-content: space-between;
   align-items: center;
   height: 60px;
-  max-width: 1200px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
@@ -486,6 +986,11 @@ const userInfo = computed(() => {
   color: #409eff;
   font-size: 24px;
   font-weight: 700;
+}
+
+.nav-buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .user-menu {
@@ -499,18 +1004,22 @@ const userInfo = computed(() => {
   font-size: 14px;
 }
 
+/* 主内容区 */
 .main-content {
+  flex: 1;
   display: flex;
   justify-content: center;
-  min-height: calc(100vh - 60px);
   padding: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* 聊天容器布局 */
+/* 聊天界面 */
 .chat-container {
   display: flex;
   width: 100%;
-  max-width: 1200px;
   height: calc(100vh - 100px);
   background-color: white;
   border-radius: 8px;
@@ -518,236 +1027,465 @@ const userInfo = computed(() => {
   overflow: hidden;
 }
 
-.sidebar {
+/* 聊天侧边栏 */
+.chat-sidebar {
   width: 300px;
   border-right: 1px solid #eaeaea;
-  overflow: hidden;
   display: flex;
   flex-direction: column;
-  background-color: #f9f9f9;
+  background-color: #f8f9fa;
 }
 
-.chat-area {
+.chat-list-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #eaeaea;
+}
+
+.chat-list-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.chat-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.chat-list-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.chat-list-item:hover {
+  background-color: #f5f7fa;
+}
+
+.chat-list-item.active {
+  background-color: #ecf5ff;
+  border-right: 3px solid #409eff;
+}
+
+.chat-item-info {
+  flex: 1;
+  margin-left: 12px;
+  min-width: 0;
+}
+
+.chat-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.last-message {
+  color: #909399;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.last-message.empty {
+  font-style: italic;
+}
+
+.chat-time {
+  color: #c0c4cc;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+/* 聊天窗口 */
+.chat-window {
   flex: 1;
   display: flex;
   flex-direction: column;
   background-color: #fff;
 }
 
-.chat-placeholder {
-  flex: 1;
+.chat-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #eaeaea;
+  background-color: white;
+}
+
+.chat-info {
   display: flex;
-  justify-content: center;
   align-items: center;
 }
 
-/* 选项卡样式 */
-.tabs-container {
+.chat-title-info {
+  margin-left: 12px;
+}
+
+.chat-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: #303133;
+}
+
+.chat-subtitle {
+  color: #909399;
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+/* 消息区域 */
+.message-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background-color: #f8f9fa;
+}
+
+.no-chat-selected {
   height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.message-loading {
+  padding: 20px;
+}
+
+.message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.empty-messages {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+}
+
+.message-item {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: 80%;
+}
+
+.message-item.my-message {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.message-item.other-message {
+  align-self: flex-start;
+}
+
+.message-avatar {
+  flex-shrink: 0;
+}
+
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.message-sender {
+  font-size: 12px;
+  color: #909399;
+  padding: 0 12px;
+}
+
+.message-bubble {
+  max-width: 100%;
+  padding: 12px 16px;
+  border-radius: 18px;
+  position: relative;
+}
+
+.my-message .message-bubble {
+  background-color: #409eff;
+  color: white;
+}
+
+.other-message .message-bubble {
+  background-color: white;
+  color: #303133;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.message-text {
+  word-break: break-word;
+  line-height: 1.4;
+}
+
+.message-time {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+/* 消息输入区 */
+.message-input-area {
+  border-top: 1px solid #eaeaea;
+  background-color: white;
+}
+
+.input-toolbar {
+  padding: 8px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  min-height: 20px;
+}
+
+.input-container {
+  padding: 16px;
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.input-container :deep(.el-textarea) {
+  flex: 1;
+}
+
+.send-button {
+  height: 40px;
+  padding: 0 16px;
+}
+
+/* 好友管理界面 */
+.friends-container,
+.groups-container {
+  width: 100%;
+  height: calc(100vh - 100px);
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
-.tabs-container :deep(.el-tabs__content) {
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #eaeaea;
+  background-color: white;
+}
+
+.page-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.header-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.friends-content,
+.groups-content {
   flex: 1;
   overflow-y: auto;
-  padding: 0 16px 16px;
+  padding: 24px;
 }
 
-.tabs-container :deep(.el-tabs__nav) {
-  width: 100%;
+/* 搜索区域 */
+.search-section {
+  margin-bottom: 32px;
 }
 
-.tabs-container :deep(.el-tabs__item) {
-  flex: 1;
-  text-align: center;
+.search-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
 }
 
-/* 搜索栏 */
 .search-bar {
-  margin: 16px 0;
+  max-width: 400px;
 }
 
-/* 区块标题 */
+/* 区块样式 */
+.requests-section,
+.friends-section,
+.my-groups-section,
+.discover-groups-section {
+  margin-bottom: 32px;
+}
+
 .section-title {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin: 16px 0 8px;
+  margin-bottom: 16px;
   padding-bottom: 8px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.section-title h3 {
+  margin: 0;
+  font-size: 16px;
   font-weight: 600;
-  font-size: 14px;
-  color: #606266;
-  border-bottom: 1px solid #eaeaea;
+  color: #303133;
 }
 
-/* 空列表提示 */
-.empty-list {
+.empty-section {
   text-align: center;
-  padding: 20px;
-  color: #909399;
-  font-size: 14px;
+  padding: 40px 20px;
 }
 
-/* 骨架屏样式 */
-.skeleton-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  margin-bottom: 8px;
-  border-radius: 8px;
-  background-color: white;
-}
-
-/* 好友请求项 */
-.friend-request-list {
-  margin-bottom: 16px;
-}
-
-.friend-request-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  margin-bottom: 8px;
-  border-radius: 8px;
-  background-color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  transition: all 0.3s;
-}
-
-.request-info {
-  flex: 1;
-  margin-left: 16px;
-}
-
-.request-name {
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-
-.request-actions {
-  display: flex;
-  gap: 8px;
-}
-
-/* 好友列表项 */
-.friend-list {
-  margin-bottom: 16px;
-}
-
-.friend-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  margin-bottom: 8px;
-  border-radius: 8px;
-  background-color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  cursor: pointer;
-  transition: all 0.3s;
-}
-
-.friend-item:hover {
-  background-color: #f5f7fa;
-}
-
-.friend-name {
-  flex: 1;
-  margin-left: 16px;
-  font-weight: 500;
-}
-
-.friend-actions {
-  opacity: 0.6;
-}
-
-.friend-item:hover .friend-actions {
-  opacity: 1;
-}
-
-/* 群组操作区 */
-.group-actions {
-  display: flex;
-  gap: 10px;
-  margin: 16px 0;
-}
-
-/* 群组列表项 */
+/* 列表项样式 */
+.request-list,
+.friend-list,
 .group-list {
-  margin-bottom: 16px;
+  display: grid;
+  gap: 12px;
 }
 
+.friend-request-item,
+.friend-item,
 .group-item {
   display: flex;
   align-items: center;
-  padding: 12px 16px;
-  margin-bottom: 8px;
+  padding: 16px 20px;
   border-radius: 8px;
-  background-color: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background-color: #fafafa;
+  border: 1px solid #f0f0f0;
+  transition: all 0.2s;
   cursor: pointer;
-  transition: all 0.3s;
 }
 
+.friend-request-item:hover,
+.friend-item:hover,
 .group-item:hover {
   background-color: #f5f7fa;
+  border-color: #dcdfe6;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
+.request-info,
+.friend-info,
 .group-info {
   flex: 1;
   margin-left: 16px;
+  min-width: 0;
 }
 
+.request-name,
+.friend-name,
 .group-name {
   font-weight: 500;
   margin-bottom: 4px;
+  color: #303133;
+}
+
+.request-username,
+.friend-username {
+  color: #909399;
+  font-size: 12px;
 }
 
 .group-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  color: #909399;
+  gap: 12px;
   font-size: 12px;
+  color: #909399;
 }
 
 .group-description {
-  color: #909399;
+  color: #606266;
   font-size: 12px;
+  margin-top: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 150px;
 }
 
-/* 搜索结果样式 */
-.search-results {
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.search-result-item {
+.request-actions,
+.friend-actions,
+.group-actions {
   display: flex;
+  gap: 8px;
   align-items: center;
-  padding: 16px;
-  border-bottom: 1px solid #eaeaea;
 }
 
-.user-info {
-  flex: 1;
-  margin-left: 16px;
+/* 骨架屏样式 */
+.skeleton-item {
+  padding: 16px 20px;
+  border-radius: 8px;
+  background-color: #fafafa;
+  margin-bottom: 12px;
 }
 
-.user-name {
-  font-weight: 500;
+/* 群组状态样式 */
+.available-group {
+  border-left: 4px solid #67c23a;
 }
 
-.user-username {
-  color: #909399;
-  font-size: 12px;
+.joined-group {
+  border-left: 4px solid #909399;
+  opacity: 0.8;
 }
 
-.user-actions {
-  margin-left: 16px;
+.groups-status-header {
+  margin-bottom: 16px;
+}
+
+.group-legend {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.group-stats {
+  display: flex;
+  gap: 8px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .header-content {
+    padding: 0 16px;
+  }
+  
+  .nav-buttons {
+    display: none;
+  }
+  
+  .main-content {
+    padding: 10px;
+  }
+  
+  .chat-container {
+    height: calc(100vh - 80px);
+  }
+  
+  .chat-sidebar {
+    width: 280px;
+  }
+  
+  .page-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .header-actions {
+    align-self: stretch;
+    justify-content: flex-end;
+  }
 }
 </style>

@@ -6,6 +6,7 @@ import {
     getGroupListWithMembersService,
     getMyGroupListWithMembersService
 } from "@/api/group";
+import { useUserInfoStore } from "@/store/userInfo";
 import { ElMessage } from "element-plus";
 
 export const groupStore = defineStore('group', () => {
@@ -27,6 +28,8 @@ export const groupStore = defineStore('group', () => {
         try {
             const data = await getGroupListWithMembersService();
             allGroups.value = data || [];
+            console.log('获取到的所有群组:', allGroups.value);
+            console.log('我的群组:', myGroups.value);
         } catch (error) {
             console.error('获取群组列表失败:', error);
             ElMessage.error('获取群组列表失败');
@@ -41,6 +44,7 @@ export const groupStore = defineStore('group', () => {
         try {
             const data = await getMyGroupListWithMembersService();
             myGroups.value = data || [];
+            console.log('获取到的我的群组:', myGroups.value);
         } catch (error) {
             console.error('获取我的群组列表失败:', error);
             ElMessage.error('获取我的群组列表失败');
@@ -76,6 +80,8 @@ export const groupStore = defineStore('group', () => {
             ElMessage.success('成功加入群组');
             // 更新群组列表
             await fetchMyGroups();
+            // 也要更新所有群组列表以刷新按钮状态
+            await fetchAllGroups();
             return true;
         } catch (error) {
             console.error('加入群组失败:', error);
@@ -88,7 +94,23 @@ export const groupStore = defineStore('group', () => {
 
     // 判断是否已经是群组成员
     const isGroupMember = (groupId) => {
-        return myGroups.value.some(group => group.id === groupId);
+        // 首先检查myGroups（我创建或管理的群组）
+        if (myGroups.value.some(group => group.id === groupId)) {
+            return true;
+        }
+        
+        // 然后检查allGroups中是否作为成员存在
+        const group = allGroups.value.find(g => g.id === groupId);
+        if (group && group.members) {
+            const userInfoStore = useUserInfoStore();
+            const currentUserId = userInfoStore.userInfo?.id;
+            
+            if (currentUserId) {
+                return group.members.some(member => member.id === currentUserId);
+            }
+        }
+        
+        return false;
     };
 
     // 清空所有数据（用于退出登录时）
