@@ -1,5 +1,7 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
+import { friendshipStore } from "./friendship";
+import { groupStore } from "./group";
 
 export const useAuthStore = defineStore(
   "auth",
@@ -33,6 +35,12 @@ export const useAuthStore = defineStore(
     const clearAuth = () => {
       accessToken.value = null;
       refreshToken.value = null;
+      
+      // 清理好友和群组数据
+      const friendStore = friendshipStore();
+      const groupData = groupStore();
+      friendStore.clearFriendshipData();
+      groupData.clearGroupData();
     };
     
     // 只清除accessToken（用于token过期时）
