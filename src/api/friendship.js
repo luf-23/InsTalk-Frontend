@@ -1,6 +1,6 @@
-import request from "@/util/network/http/request";
+import request from "@/util/request";
 
-// 发送好友申请(params传{username:username})
+// 发送好友申请(params传{id:id})
 export const sendFriendRequestService = (params) => {
     return request({
         url: '/friendship/send',
@@ -79,3 +79,16 @@ export const getPendingListService = () => {
         }
     });
 }
+
+
+// 通过用户名搜索用户(支持模糊搜索) params传{username:username}
+export const searchUserByUsernameService = (params) => {
+    return request({
+        url: '/friendship/search',
+        method: 'get',
+        params,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+    });
+};

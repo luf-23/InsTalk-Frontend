@@ -1,4 +1,4 @@
-import request from "@/util/network/http/request";
+import request from "@/util/request";
 /*
 @Data
 public class LoginVO {

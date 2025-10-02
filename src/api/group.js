@@ -1,4 +1,4 @@
-import request from "@/util/network/http/request";
+import request from "@/util/request";
 
 export const createGroupService = (data) => {
     return request({
