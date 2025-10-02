@@ -1,6 +1,6 @@
 import request from "@/util/network/http/request";
 
-// 发送好友申请
+// 发送好友申请(params传{username:username})
 export const sendFriendRequestService = (params) => {
     return request({
         url: '/friendship/send',
@@ -49,6 +49,15 @@ export const deleteFriendService = (params) => {
 }
 
 
+/*
+@Data
+public class FriendVO {
+    private Long id;
+    private String username;
+    private String nickname;
+    private String avatar;
+}
+*/
 //获取好友列表
 export const getFriendListService = () => {
     return request({

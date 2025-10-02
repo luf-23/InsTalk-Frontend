@@ -1,5 +1,17 @@
 import request from "@/util/network/http/request";
-
+/*
+@Data
+public class LoginVO {
+    private Long id;
+    private String username;
+    private String nickname;
+    private String email;
+    private String avatar;
+    private String role;
+    private String accessToken;
+    private String refreshToken;
+}
+*/
 // 登录 - 支持用户名和邮箱两种方式
 export const loginService = (data) => {
     return request({
