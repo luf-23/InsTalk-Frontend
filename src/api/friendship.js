@@ -49,6 +49,7 @@ export const deleteFriendService = (params) => {
 }
 
 
+//获取好友列表
 /*
 @Data
 public class FriendVO {
@@ -58,7 +59,6 @@ public class FriendVO {
     private String avatar;
 }
 */
-//获取好友列表
 export const getFriendListService = () => {
     return request({
         url: '/friendship/friendList',
@@ -70,6 +70,15 @@ export const getFriendListService = () => {
 }
 
 //获取好友申请列表
+/*
+@Data
+public class FriendVO {
+    private Long id;
+    private String username;
+    private String nickname;
+    private String avatar;
+}
+*/
 export const getPendingListService = () => {
     return request({
         url: '/friendship/pendingList',
@@ -82,6 +91,15 @@ export const getPendingListService = () => {
 
 
 // 通过用户名搜索用户(支持模糊搜索) params传{username:username}
+/*
+@Data
+public class FriendVO {
+    private Long id;
+    private String username;
+    private String nickname;
+    private String avatar;
+}
+*/
 export const searchUserByUsernameService = (params) => {
     return request({
         url: '/friendship/search',

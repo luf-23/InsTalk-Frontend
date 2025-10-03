@@ -10,9 +10,9 @@ import { useUserInfoStore } from "@/store/userInfo";
 import { ElMessage } from "element-plus";
 
 export const groupStore = defineStore('group', () => {
-    // 存储所有群组列表（包含成员信息）
+    // 存储所有已加入的群组列表（包含成员信息）
     const allGroups = ref([]);
-    // 存储我的群组列表（包含成员信息）
+    // 存储我创建的群组列表（包含成员信息）
     const myGroups = ref([]);
     // 加载状态
     const loading = ref({
@@ -22,7 +22,7 @@ export const groupStore = defineStore('group', () => {
         join: false
     });
 
-    // 获取所有群组列表
+    // 获取所有我已加入的群组列表
     const fetchAllGroups = async () => {
         loading.value.allGroups = true;
         try {
@@ -38,7 +38,7 @@ export const groupStore = defineStore('group', () => {
         }
     };
 
-    // 获取我的群组列表
+    // 获取我创建的群组列表
     const fetchMyGroups = async () => {
         loading.value.myGroups = true;
         try {
@@ -92,26 +92,6 @@ export const groupStore = defineStore('group', () => {
         }
     };
 
-    // 判断是否已经是群组成员
-    const isGroupMember = (groupId) => {
-        // 首先检查myGroups（我创建或管理的群组）
-        if (myGroups.value.some(group => group.id === groupId)) {
-            return true;
-        }
-        
-        // 然后检查allGroups中是否作为成员存在
-        const group = allGroups.value.find(g => g.id === groupId);
-        if (group && group.members) {
-            const userInfoStore = useUserInfoStore();
-            const currentUserId = userInfoStore.userInfo?.id;
-            
-            if (currentUserId) {
-                return group.members.some(member => member.id === currentUserId);
-            }
-        }
-        
-        return false;
-    };
 
     // 清空所有数据（用于退出登录时）
     const clearGroupData = () => {

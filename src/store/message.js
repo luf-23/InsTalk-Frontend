@@ -7,7 +7,7 @@ import { ElMessage } from "element-plus";
 export const messageStore = defineStore('message', () => {
     // 存储所有消息列表
     const messages = ref([]);
-    // 当前选中的聊天对象/群组
+    // 当前选中的聊天对象/群组：groupId或userId
     const currentChat = ref(null);
     // 当前聊天类型：'friend' | 'group'
     const chatType = ref('friend');
