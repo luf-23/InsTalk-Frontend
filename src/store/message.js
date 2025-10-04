@@ -4,6 +4,15 @@ import { sendMessageService, getMessageHistoryService } from "@/api/message";
 import { useUserInfoStore } from "@/store/userInfo";
 import { ElMessage } from "element-plus";
 
+// 时间比较辅助函数
+const getTimeForComparison = (timeString) => {
+  if (!timeString) return 0;
+  
+  // 处理标准日期时间格式
+  const date = new Date(timeString);
+  return isNaN(date.getTime()) ? 0 : date.getTime();
+};
+
 export const messageStore = defineStore('message', () => {
     // 存储所有消息列表
     const messages = ref([]);
@@ -68,61 +77,49 @@ export const messageStore = defineStore('message', () => {
                 return message.groupId === currentChat.value.id;
             }
             return false;
-        }).sort((a, b) => new Date(a.sendAt) - new Date(b.sendAt));
+        }).sort((a, b) => getTimeForComparison(a.sendAt) - getTimeForComparison(b.sendAt));
     });
 
     // 获取聊天列表（最近的对话）
-    const getChatList = computed(() => {
-        const chatMap = new Map();
-        
-        messages.value.forEach(message => {
-            let chatKey, chatInfo;
-            
-            if (message.groupId) {
-                // 群组消息
-                chatKey = `group_${message.groupId}`;
-                if (!chatMap.has(chatKey)) {
-                    chatInfo = {
+        const getChatList = computed(() => {
+            const chatMap = new Map();
+            // 先按时间升序排序，保证后面覆盖的是最新的
+            const sortedMessages = [...messages.value].sort((a, b) => getTimeForComparison(a.sendAt) - getTimeForComparison(b.sendAt));
+            sortedMessages.forEach(message => {
+                let chatKey, chatInfo;
+                if (message.groupId) {
+                    chatKey = `group_${message.groupId}`;
+                    chatInfo = chatMap.get(chatKey) || {
                         id: message.groupId,
                         type: 'group',
-                        name: `群组 ${message.groupId}`, // 这里可以从群组store获取实际名称
-                        lastMessage: message,
-                        lastMessageTime: message.sendAt,
+                        name: `群组 ${message.groupId}`,
+                        lastMessage: null,
+                        lastMessageTime: null,
                         unreadCount: 0
                     };
-                }
-            } else {
-                // 私人消息
-                const otherId = message.senderId === getCurrentUserId() ? message.receiverId : message.senderId;
-                chatKey = `friend_${otherId}`;
-                if (!chatMap.has(chatKey)) {
-                    chatInfo = {
+                } else {
+                    const otherId = message.senderId === getCurrentUserId() ? message.receiverId : message.senderId;
+                    chatKey = `friend_${otherId}`;
+                    chatInfo = chatMap.get(chatKey) || {
                         id: otherId,
                         type: 'friend',
-                        name: `用户 ${otherId}`, // 这里可以从好友store获取实际昵称
-                        lastMessage: message,
-                        lastMessageTime: message.sendAt,
+                        name: `用户 ${otherId}`,
+                        lastMessage: null,
+                        lastMessageTime: null,
                         unreadCount: 0
                     };
                 }
-            }
-            
-            if (chatInfo) {
-                const existing = chatMap.get(chatKey);
-                if (!existing || new Date(message.sendAt) > new Date(existing.lastMessageTime)) {
-                    chatMap.set(chatKey, {
-                        ...chatInfo,
-                        lastMessage: message,
-                        lastMessageTime: message.sendAt
-                    });
-                }
-            }
+                // 始终用最新的消息覆盖
+                chatMap.set(chatKey, {
+                    ...chatInfo,
+                    lastMessage: message,
+                    lastMessageTime: message.sendAt
+                });
+            });
+            return Array.from(chatMap.values()).sort((a, b) =>
+                getTimeForComparison(b.lastMessageTime) - getTimeForComparison(a.lastMessageTime)
+            );
         });
-        
-        return Array.from(chatMap.values()).sort((a, b) => 
-            new Date(b.lastMessageTime) - new Date(a.lastMessageTime)
-        );
-    });
 
     // 获取当前用户ID
     const getCurrentUserId = () => {
@@ -141,6 +138,22 @@ export const messageStore = defineStore('message', () => {
         };
     };
 
+    // 添加临时消息到列表
+    const addTempMessage = (message) => {
+        messages.value.push(message);
+    };
+    
+    // 更新临时消息状态
+    const updateTempMessageStatus = (messageId, status) => {
+        const messageIndex = messages.value.findIndex(m => m.id === messageId);
+        if (messageIndex !== -1) {
+            messages.value[messageIndex] = {
+                ...messages.value[messageIndex],
+                status
+            };
+        }
+    };
+
     return {
         messages,
         currentChat,
@@ -151,6 +164,8 @@ export const messageStore = defineStore('message', () => {
         setCurrentChat,
         getCurrentChatMessages,
         getChatList,
-        clearMessageData
+        clearMessageData,
+        addTempMessage,
+        updateTempMessageStatus
     };
 });

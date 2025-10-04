@@ -1,0 +1,942 @@
+<template>
+  <div class="chat-sidebar">
+    <!-- 用户信息区域 -->
+    <div class="user-profile">
+      <el-avatar :size="40" :src="userAvatar" @error="avatarError">
+        {{ userInitials }}
+      </el-avatar>
+      <div class="user-info">
+        <h3>{{ username }}</h3>
+        <el-tag size="small" type="info">{{ userRole === 'admin' ? '管理员' : '用户' }}</el-tag>
+      </div>
+      <el-dropdown trigger="click">
+        <el-icon class="more-icon"><More /></el-icon>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item @click="showUserSettings">
+              <el-icon><Setting /></el-icon>个人设置
+            </el-dropdown-item>
+            <el-dropdown-item @click="logout">
+              <el-icon><SwitchButton /></el-icon>退出登录
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+    </div>
+
+    <!-- 搜索框 -->
+    <div class="search-container">
+      <el-input
+        v-model="searchQuery"
+        placeholder="搜索好友或群组"
+        prefix-icon="Search"
+        clearable
+      />
+    </div>
+
+    <!-- 菜单 -->
+    <div class="menu-container">
+      <el-menu
+        :default-active="activeTab"
+        class="chat-menu"
+        mode="horizontal"
+        @select="handleTabChange"
+      >
+        <el-menu-item index="chats">
+          <el-icon><ChatDotRound /></el-icon>聊天
+        </el-menu-item>
+        <el-menu-item index="friends">
+          <el-icon><UserFilled /></el-icon>好友
+        </el-menu-item>
+        <el-menu-item index="groups">
+          <el-icon><Collection /></el-icon>群组
+        </el-menu-item>
+      </el-menu>
+    </div>
+
+    <!-- 列表区域 -->
+    <div class="list-container">
+      <!-- 聊天列表 -->
+      <div v-if="activeTab === 'chats'" class="chat-list">
+        <template v-if="chatList.length > 0">
+          <div
+            v-for="chat in chatList"
+            :key="`${chat.type}_${chat.id}`"
+            class="chat-item"
+            :class="{ active: isChatActive(chat) }"
+            @click="selectChat(chat)"
+          >
+            <el-avatar :size="36" :src="getChatAvatar(chat)" shape="square">
+              {{ getChatInitials(chat) }}
+            </el-avatar>
+            <div class="chat-item-content">
+              <div class="chat-item-header">
+                <h4>{{ chat.name }}</h4>
+                <span class="time">{{ formatTime(chat.lastMessageTime) }}</span>
+              </div>
+              <div class="chat-item-message">
+                <p>{{ formatLastMessage(chat.lastMessage) }}</p>
+                <el-badge v-if="chat.unreadCount" :value="chat.unreadCount" class="unread-badge" />
+              </div>
+            </div>
+          </div>
+        </template>
+        <el-empty v-else description="暂无聊天记录" />
+      </div>
+
+      <!-- 好友列表 -->
+      <div v-if="activeTab === 'friends'" class="friends-container">
+        <!-- 好友操作 -->
+        <div class="friend-actions">
+          <el-button type="primary" size="small" @click="showAddFriend">
+            <el-icon><Plus /></el-icon>添加好友
+          </el-button>
+          <el-button v-if="pendingRequestsCount > 0" type="info" size="small" @click="showPendingRequests">
+            好友申请 <el-badge :value="pendingRequestsCount" />
+          </el-button>
+        </div>
+        
+        <!-- 好友列表 -->
+        <div class="friend-list">
+          <template v-if="friends.length > 0">
+            <div
+              v-for="friend in friends"
+              :key="friend.id"
+              class="friend-item"
+              @click="startChat(friend, 'friend')"
+            >
+              <el-avatar :size="36" :src="friend.avatar">
+                {{ getInitials(friend.username) }}
+              </el-avatar>
+              <div class="friend-info">
+                <h4>{{ friend.nickname || friend.username }}</h4>
+                <p v-if="friend.nickname">@{{ friend.username }}</p>
+              </div>
+              <el-dropdown trigger="click" @click.stop>
+                <el-icon><MoreFilled /></el-icon>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item @click.stop="startChat(friend, 'friend')">
+                      <el-icon><ChatDotRound /></el-icon>发送消息
+                    </el-dropdown-item>
+                    <el-dropdown-item @click.stop="deleteFriendConfirm(friend)">
+                      <el-icon><Delete /></el-icon>删除好友
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
+          </template>
+          <el-empty v-else description="暂无好友" />
+        </div>
+      </div>
+
+      <!-- 群组列表 -->
+      <div v-if="activeTab === 'groups'" class="groups-container">
+        <!-- 群组操作 -->
+        <div class="group-actions">
+          <el-button type="primary" size="small" @click="showCreateGroup">
+            <el-icon><Plus /></el-icon>创建群组
+          </el-button>
+          <el-button type="info" size="small" @click="showJoinGroup">
+            <el-icon><Position /></el-icon>加入群组
+          </el-button>
+        </div>
+        
+        <!-- 群组列表 -->
+        <div class="group-list">
+          <template v-if="allGroups.length > 0">
+            <div
+              v-for="group in allGroups"
+              :key="group.id"
+              class="group-item"
+              @click="startChat(group, 'group')"
+            >
+              <el-avatar :size="36" shape="square">
+                {{ getInitials(group.name) }}
+              </el-avatar>
+              <div class="group-info">
+                <h4>{{ group.name }}</h4>
+                <p>{{ group.members.length }}人</p>
+              </div>
+              <el-tooltip :content="isMyGroup(group) ? '我创建的' : '已加入'" placement="top">
+                <el-icon :color="isMyGroup(group) ? '#409EFF' : '#67C23A'">
+                  <component :is="isMyGroup(group) ? 'Star' : 'Check'" />
+                </el-icon>
+              </el-tooltip>
+            </div>
+          </template>
+          <el-empty v-else description="暂无群组" />
+        </div>
+      </div>
+    </div>
+
+    <!-- 添加好友对话框 -->
+    <el-dialog
+      v-model="addFriendDialogVisible"
+      title="添加好友"
+      width="400px"
+      :append-to-body="true"
+      destroy-on-close
+    >
+      <div class="search-user-container">
+        <div class="search-form">
+          <el-input
+            v-model="friendSearchQuery"
+            placeholder="输入用户名搜索"
+            prefix-icon="Search"
+            clearable
+            @keyup.enter="searchUsers"
+          />
+          <el-button type="primary" @click="searchUsers" :loading="loading.search">搜索</el-button>
+        </div>
+        
+        <div class="search-results" v-loading="loading.search">
+          <template v-if="searchResults.length > 0">
+            <div
+              v-for="user in searchResults"
+              :key="user.id"
+              class="search-result-item"
+            >
+              <el-avatar :size="36" :src="user.avatar">
+                {{ getInitials(user.username) }}
+              </el-avatar>
+              <div class="user-info">
+                <h4>{{ user.nickname || user.username }}</h4>
+                <p v-if="user.nickname">@{{ user.username }}</p>
+              </div>
+              <el-button
+                :type="isFriend(user) ? 'info' : 'primary'"
+                size="small"
+                :disabled="isFriend(user)"
+                @click="sendFriendRequest(user.id)"
+              >
+                {{ isFriend(user) ? '已是好友' : '添加好友' }}
+              </el-button>
+            </div>
+          </template>
+          <el-empty v-else-if="!loading.search && friendSearchQuery" description="未找到匹配的用户" />
+          <el-empty v-else description="请输入用户名搜索" />
+        </div>
+      </div>
+    </el-dialog>
+
+    <!-- 好友申请对话框 -->
+    <el-dialog
+      v-model="pendingRequestsDialogVisible"
+      title="好友申请"
+      width="400px"
+      :append-to-body="true"
+      destroy-on-close
+    >
+      <div class="pending-requests" v-loading="loading.pending">
+        <template v-if="pendingRequests.length > 0">
+          <div
+            v-for="request in pendingRequests"
+            :key="request.id"
+            class="pending-request-item"
+          >
+            <el-avatar :size="36" :src="request.avatar">
+              {{ getInitials(request.username) }}
+            </el-avatar>
+            <div class="user-info">
+              <h4>{{ request.nickname || request.username }}</h4>
+              <p v-if="request.nickname">@{{ request.username }}</p>
+            </div>
+            <div class="request-actions">
+              <el-button
+                type="primary"
+                size="small"
+                @click="acceptFriendRequest(request.id)"
+              >
+                接受
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                @click="rejectFriendRequest(request.id)"
+              >
+                拒绝
+              </el-button>
+            </div>
+          </div>
+        </template>
+        <el-empty v-else description="暂无好友申请" />
+      </div>
+    </el-dialog>
+
+    <!-- 创建群组对话框 -->
+    <el-dialog
+      v-model="createGroupDialogVisible"
+      title="创建群组"
+      width="400px"
+      :append-to-body="true"
+      destroy-on-close
+    >
+      <el-form
+        ref="createGroupFormRef"
+        :model="createGroupForm"
+        :rules="createGroupRules"
+        label-width="80px"
+      >
+        <el-form-item label="群组名称" prop="name">
+          <el-input v-model="createGroupForm.name" maxlength="20" show-word-limit />
+        </el-form-item>
+        <el-form-item label="群组描述" prop="description">
+          <el-input
+            v-model="createGroupForm.description"
+            type="textarea"
+            maxlength="100"
+            show-word-limit
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="createGroupDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="createNewGroup" :loading="loading.create">创建</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 加入群组对话框 -->
+    <el-dialog
+      v-model="joinGroupDialogVisible"
+      title="加入群组"
+      width="400px"
+      :append-to-body="true"
+      destroy-on-close
+    >
+      <div class="search-group-container">
+        <div class="search-form">
+          <el-input
+            v-model="groupSearchQuery"
+            placeholder="输入群组名称搜索"
+            prefix-icon="Search"
+            clearable
+            @keyup.enter="searchGroups"
+          />
+          <el-button type="primary" @click="searchGroups" :loading="loading.searchGroup">搜索</el-button>
+        </div>
+        
+        <div class="search-results" v-loading="loading.searchGroup">
+          <template v-if="groupSearchResults.length > 0">
+            <div
+              v-for="group in groupSearchResults"
+              :key="group.id"
+              class="search-result-item"
+            >
+              <el-avatar :size="36" shape="square">
+                {{ getInitials(group.name) }}
+              </el-avatar>
+              <div class="group-info">
+                <h4>{{ group.name }}</h4>
+                <p>{{ group.description || '暂无描述' }}</p>
+              </div>
+              <el-button
+                :type="isGroupMember(group.id) ? 'info' : 'primary'"
+                size="small"
+                :disabled="isGroupMember(group.id)"
+                @click="joinGroup(group.id)"
+              >
+                {{ isGroupMember(group.id) ? '已加入' : '加入' }}
+              </el-button>
+            </div>
+          </template>
+          <el-empty v-else-if="!loading.searchGroup && groupSearchQuery" description="未找到匹配的群组" />
+          <el-empty v-else description="请输入群组名称搜索" />
+        </div>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElMessageBox, ElMessage } from 'element-plus';
+import { 
+  ChatDotRound, UserFilled, Collection, 
+  Setting, SwitchButton, Search, Plus, 
+  MoreFilled, Delete, Position, Star, Check, More 
+} from '@element-plus/icons-vue';
+import { friendshipStore } from '@/store/friendship';
+import { groupStore } from '@/store/group';
+import { messageStore } from '@/store/message';
+import { useAuthStore } from '@/store/auth';
+import { useUserInfoStore } from '@/store/userInfo';
+import { searchGroupByNameService } from '@/api/group';
+import { logoutService } from '@/api/auth';
+
+// 路由和Store初始化
+const router = useRouter();
+const friendStore = friendshipStore();
+const gStore = groupStore();
+const msgStore = messageStore();
+const authStore = useAuthStore();
+const userInfoStore = useUserInfoStore();
+
+// 用户信息
+const username = computed(() => userInfoStore.username);
+const userAvatar = computed(() => userInfoStore.avatar);
+const userRole = computed(() => userInfoStore.role);
+const userInitials = computed(() => getInitials(username.value));
+
+// 选项卡激活状态
+const activeTab = ref('chats');
+
+// 搜索查询
+const searchQuery = ref('');
+
+// 聊天相关数据
+const chatList = computed(() => msgStore.getChatList);
+
+// 好友相关数据
+const friends = computed(() => friendStore.friends);
+const pendingRequests = computed(() => friendStore.pendingRequests);
+const pendingRequestsCount = computed(() => pendingRequests.value.length);
+const searchResults = computed(() => friendStore.searchResults);
+const loading = computed(() => ({
+  ...friendStore.loading,
+  ...gStore.loading,
+  searchGroup: false
+}));
+
+// 群组相关数据
+const allGroups = computed(() => gStore.allGroups);
+const myGroups = computed(() => gStore.myGroups);
+const groupSearchResults = ref([]);
+const groupSearchQuery = ref('');
+
+// 对话框显示状态
+const addFriendDialogVisible = ref(false);
+const pendingRequestsDialogVisible = ref(false);
+const createGroupDialogVisible = ref(false);
+const joinGroupDialogVisible = ref(false);
+
+// 添加好友搜索查询
+const friendSearchQuery = ref('');
+
+// 创建群组表单
+const createGroupFormRef = ref(null);
+const createGroupForm = ref({
+  name: '',
+  description: ''
+});
+const createGroupRules = {
+  name: [
+    { required: true, message: '请输入群组名称', trigger: 'blur' },
+    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
+  ],
+  description: [
+    { max: 100, message: '最多100个字符', trigger: 'blur' }
+  ]
+};
+
+// 生命周期钩子
+onMounted(async () => {
+  // 获取聊天数据
+  await msgStore.fetchMessageHistory();
+  // 获取好友列表
+  await friendStore.fetchFriendList();
+  await friendStore.fetchPendingRequests();
+  // 获取群组列表
+  await gStore.fetchAllGroups();
+  await gStore.fetchMyGroups();
+});
+
+// 监听搜索查询
+watch(searchQuery, (newValue) => {
+  // 实现本地搜索逻辑
+  // TODO: 根据搜索词过滤聊天、好友和群组
+});
+
+// 切换选项卡
+const handleTabChange = (tab) => {
+  activeTab.value = tab;
+};
+
+// 头像加载错误处理
+const avatarError = () => {
+  // 使用用户名首字母作为替代
+  return true;
+};
+
+// 获取姓名首字母
+const getInitials = (name) => {
+  if (!name) return '?';
+  return name.substring(0, 2).toUpperCase();
+};
+
+// 检查聊天是否激活
+const isChatActive = (chat) => {
+  return msgStore.currentChat && 
+         msgStore.currentChat.id === chat.id && 
+         msgStore.chatType === chat.type;
+};
+
+// 获取聊天头像
+const getChatAvatar = (chat) => {
+  // TODO: 根据chat.type获取正确的头像
+  return '';
+};
+
+// 获取聊天首字母
+const getChatInitials = (chat) => {
+  return getInitials(chat.name);
+};
+
+// 格式化时间
+const formatTime = (time) => {
+  if (!time) return '';
+  
+  // 处理ISO日期时间格式（LocalDateTime返回的格式）
+  const date = new Date(time);
+  if (isNaN(date.getTime())) {
+    console.warn('无效的时间格式:', time);
+    return time; // 返回原始值，防止显示'Invalid Date'
+  }
+  
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((today - messageDate) / (1000 * 60 * 60 * 24));
+  
+  // 今天发送的消息，显示时间
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }
+  
+  // 昨天发送的消息
+  if (diffDays === 1) {
+    return '昨天';
+  }
+  
+  // 一周内发送的消息，显示星期几
+  if (diffDays < 7) {
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    return weekdays[date.getDay()];
+  }
+  
+  // 今年内的消息，显示月/日
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  }
+  
+  // 更早的消息，显示年/月/日
+  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+};
+
+// 格式化最后一条消息
+const formatLastMessage = (message) => {
+  if (!message) return '';
+  
+  // 根据消息类型格式化
+  switch(message.messageType) {
+    case 'TEXT':
+      return message.content;
+    case 'IMAGE':
+      return '[图片]';
+    case 'FILE':
+      return '[文件]';
+    default:
+      return message.content;
+  }
+};
+
+// 选择聊天
+const selectChat = (chat) => {
+  msgStore.setCurrentChat(chat, chat.type);
+};
+
+// 开始聊天
+const startChat = (target, type) => {
+  // 格式化目标为聊天对象
+  const chat = {
+    id: target.id,
+    type: type,
+    name: type === 'friend' ? (target.nickname || target.username) : target.name
+  };
+  
+  // 设置为当前聊天
+  msgStore.setCurrentChat(chat, type);
+  
+  // 切换到聊天标签
+  activeTab.value = 'chats';
+};
+
+// 显示添加好友对话框
+const showAddFriend = () => {
+  friendSearchQuery.value = '';
+  friendStore.clearSearchResults();
+  addFriendDialogVisible.value = true;
+};
+
+// 显示好友申请对话框
+const showPendingRequests = async () => {
+  await friendStore.fetchPendingRequests();
+  pendingRequestsDialogVisible.value = true;
+};
+
+// 搜索用户
+const searchUsers = () => {
+  if (!friendSearchQuery.value.trim()) {
+    ElMessage.warning('请输入用户名搜索');
+    return;
+  }
+  
+  friendStore.searchUsers(friendSearchQuery.value);
+};
+
+// 检查是否已经是好友
+const isFriend = (user) => {
+  return friends.value.some(friend => friend.id === user.id);
+};
+
+// 发送好友请求
+const sendFriendRequest = async (userId) => {
+  const success = await friendStore.sendFriendRequest(userId);
+  if (success) {
+    // 清空搜索结果
+    friendSearchQuery.value = '';
+    friendStore.clearSearchResults();
+  }
+};
+
+// 接受好友请求
+const acceptFriendRequest = async (requestId) => {
+  await friendStore.acceptFriendRequest(requestId);
+};
+
+// 拒绝好友请求
+const rejectFriendRequest = async (requestId) => {
+  await friendStore.rejectFriendRequest(requestId);
+};
+
+// 删除好友确认
+const deleteFriendConfirm = (friend) => {
+  ElMessageBox.confirm(
+    `确定要删除好友 ${friend.nickname || friend.username} 吗？`,
+    '删除好友',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    deleteFriend(friend.id);
+  }).catch(() => {});
+};
+
+// 删除好友
+const deleteFriend = async (friendId) => {
+  await friendStore.deleteFriend(friendId);
+};
+
+// 显示创建群组对话框
+const showCreateGroup = () => {
+  createGroupForm.value = {
+    name: '',
+    description: ''
+  };
+  createGroupDialogVisible.value = true;
+};
+
+// 显示加入群组对话框
+const showJoinGroup = () => {
+  groupSearchQuery.value = '';
+  groupSearchResults.value = [];
+  joinGroupDialogVisible.value = true;
+};
+
+// 创建新群组
+const createNewGroup = async () => {
+  if (!createGroupFormRef.value) return;
+  
+  try {
+    await createGroupFormRef.value.validate();
+    
+    const success = await gStore.createGroup(createGroupForm.value);
+    if (success) {
+      createGroupDialogVisible.value = false;
+    }
+  } catch (error) {
+    console.error('表单验证失败', error);
+  }
+};
+
+// 搜索群组
+const searchGroups = async () => {
+  if (!groupSearchQuery.value.trim()) {
+    ElMessage.warning('请输入群组名称搜索');
+    return;
+  }
+  
+  loading.value.searchGroup = true;
+  try {
+    const result = await searchGroupByNameService({ name: groupSearchQuery.value });
+    groupSearchResults.value = result || [];
+  } catch (error) {
+    ElMessage.error('搜索群组失败');
+    groupSearchResults.value = [];
+  } finally {
+    loading.value.searchGroup = false;
+  }
+};
+
+// 加入群组
+const joinGroup = async (groupId) => {
+  const success = await gStore.joinGroup(groupId);
+  if (success) {
+    // 重新加载群组列表
+    await gStore.fetchAllGroups();
+  }
+};
+
+// 检查是否是群组成员
+const isGroupMember = (groupId) => {
+  return gStore.isGroupMember(groupId);
+};
+
+// 检查是否是我创建的群组
+const isMyGroup = (group) => {
+  return group.ownerId === userInfoStore.userId;
+};
+
+// 显示用户设置
+const showUserSettings = () => {
+  ElMessage.info('个人设置功能正在开发中');
+};
+
+// 退出登录
+const logout = async () => {
+  ElMessageBox.confirm(
+    '确定要退出登录吗？',
+    '退出登录',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(async () => {
+    try {
+      await logoutService();
+    } catch (error) {
+      console.error('登出接口调用失败', error);
+    } finally {
+      // 无论接口是否成功，都清除本地存储并退出
+      authStore.clearAuth();
+      userInfoStore.clearUserInfo();
+      router.push('/login');
+    }
+  }).catch(() => {});
+};
+</script>
+
+<style scoped>
+.chat-sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  border-right: 1px solid var(--el-border-color-light);
+  background-color: var(--el-bg-color);
+}
+
+/* 用户信息区域 */
+.user-profile {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid var(--el-border-color-light);
+  background-color: var(--el-bg-color-overlay);
+}
+
+.user-info {
+  flex: 1;
+  margin-left: 12px;
+}
+
+.user-info h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.more-icon {
+  font-size: 20px;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+}
+
+/* 搜索框 */
+.search-container {
+  padding: 16px;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+/* 菜单 */
+.menu-container {
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.chat-menu {
+  display: flex;
+  justify-content: space-around;
+  background-color: var(--el-bg-color);
+  --el-menu-horizontal-height: 44px;
+}
+
+/* 列表容器 */
+.list-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+/* 聊天列表 */
+.chat-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.chat-item:hover {
+  background-color: var(--el-bg-color-page);
+}
+
+.chat-item.active {
+  background-color: var(--el-color-primary-light-9);
+}
+
+.chat-item-content {
+  flex: 1;
+  margin-left: 12px;
+  overflow: hidden;
+}
+
+.chat-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-item-header h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-item-header .time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.chat-item-message {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chat-item-message p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 70%;
+}
+
+/* 好友容器 */
+.friends-container, .groups-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.friend-actions, .group-actions {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+  background-color: var(--el-bg-color-overlay);
+}
+
+.friend-item, .group-item, .pending-request-item, .search-result-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.friend-item:hover, .group-item:hover {
+  background-color: var(--el-bg-color-page);
+}
+
+.friend-info, .group-info, .user-info {
+  flex: 1;
+  margin-left: 12px;
+  overflow: hidden;
+}
+
+.friend-info h4, .group-info h4, .user-info h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--el-text-color-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.friend-info p, .group-info p, .user-info p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 对话框样式 */
+.search-form {
+  display: flex;
+  margin-bottom: 16px;
+}
+
+.search-form .el-input {
+  flex: 1;
+  margin-right: 8px;
+}
+
+.search-results, .pending-requests {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.request-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* 添加响应式设计 */
+@media (max-width: 768px) {
+  .chat-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--el-border-color-light);
+  }
+  
+  .list-container {
+    max-height: 300px;
+  }
+}
+</style>
