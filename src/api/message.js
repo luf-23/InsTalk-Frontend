@@ -31,7 +31,7 @@ public class MessageVO {
     private Long groupId;
     private String content;
     private String messageType;
-    private LocalTime sendAt;
+    private LocalDateTime sendAt;
     private Boolean isRead;
     //1.senderId为自己
     //2.receiverId为自己

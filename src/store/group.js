@@ -93,6 +93,20 @@ export const groupStore = defineStore('group', () => {
     };
 
 
+    // 检查用户是否是群组成员
+    const isGroupMember = (groupId) => {
+        const userInfoStore = useUserInfoStore();
+        const userId = userInfoStore.userId;
+        
+        // 在所有群组中查找
+        const group = allGroups.value.find(g => g.id === groupId);
+        if (group) {
+            // 检查成员列表中是否有当前用户
+            return group.members.some(member => member.id === userId);
+        }
+        return false;
+    };
+
     // 清空所有数据（用于退出登录时）
     const clearGroupData = () => {
         allGroups.value = [];
