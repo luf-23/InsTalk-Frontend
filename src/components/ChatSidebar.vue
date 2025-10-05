@@ -36,22 +36,32 @@
 
     <!-- 菜单 -->
     <div class="menu-container">
-      <el-menu
-        :default-active="activeTab"
-        class="chat-menu"
-        mode="horizontal"
-        @select="handleTabChange"
-      >
-        <el-menu-item index="chats">
-          <el-icon><ChatDotRound /></el-icon>聊天
-        </el-menu-item>
-        <el-menu-item index="friends">
-          <el-icon><UserFilled /></el-icon>好友
-        </el-menu-item>
-        <el-menu-item index="groups">
-          <el-icon><Collection /></el-icon>群组
-        </el-menu-item>
-      </el-menu>
+      <div class="chat-menu">
+        <div
+          class="menu-item"
+          :class="{ active: activeTab === 'chats' }"
+          @click="handleTabChange('chats')"
+        >
+          <el-icon><ChatDotRound /></el-icon>
+          <span>聊天</span>
+        </div>
+        <div
+          class="menu-item"
+          :class="{ active: activeTab === 'friends' }"
+          @click="handleTabChange('friends')"
+        >
+          <el-icon><UserFilled /></el-icon>
+          <span>好友</span>
+        </div>
+        <div
+          class="menu-item"
+          :class="{ active: activeTab === 'groups' }"
+          @click="handleTabChange('groups')"
+        >
+          <el-icon><Collection /></el-icon>
+          <span>群组</span>
+        </div>
+      </div>
     </div>
 
     <!-- 列表区域 -->
@@ -145,28 +155,81 @@
         
         <!-- 群组列表 -->
         <div class="group-list">
-          <template v-if="allGroups.length > 0">
-            <div
-              v-for="group in allGroups"
-              :key="group.id"
-              class="group-item"
-              @click="startChat(group, 'group')"
-            >
-              <el-avatar :size="36" shape="square">
-                {{ getInitials(group.name) }}
-              </el-avatar>
-              <div class="group-info">
-                <h4>{{ group.name }}</h4>
-                <p>{{ group.members.length }}人</p>
-              </div>
-              <el-tooltip :content="isMyGroup(group) ? '我创建的' : '已加入'" placement="top">
-                <el-icon :color="isMyGroup(group) ? '#409EFF' : '#67C23A'">
-                  <component :is="isMyGroup(group) ? 'Star' : 'Check'" />
-                </el-icon>
-              </el-tooltip>
+          <!-- 我创建的群组 -->
+          <div>
+            <div class="group-category-header" @click="showCreatedGroups = !showCreatedGroups">
+              <el-icon><Collection /></el-icon>
+              <span>我创建的群组 ({{ createdGroups.length }})</span>
+              <el-icon><component :is="showCreatedGroups ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
             </div>
-          </template>
-          <el-empty v-else description="暂无群组" />
+            <div v-show="showCreatedGroups">
+              <template v-if="createdGroups.length > 0">
+                <div v-for="group in createdGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
+                  <el-avatar :size="36" shape="square">
+                    {{ getInitials(group.name) }}
+                  </el-avatar>
+                  <div class="group-info">
+                    <h4>{{ group.name }}</h4>
+                    <p>{{ group.members.length }}人</p>
+                  </div>
+                  <el-tooltip content="我创建的" placement="top">
+                    <el-icon color="#409EFF"><Star /></el-icon>
+                  </el-tooltip>
+                </div>
+              </template>
+              <el-empty v-else description="暂无我创建的群组" />
+            </div>
+          </div>
+          <!-- 我管理的群组 -->
+          <div>
+            <div class="group-category-header" @click="showManagedGroups = !showManagedGroups">
+              <el-icon><Collection /></el-icon>
+              <span>我管理的群组 ({{ managedGroups.length }})</span>
+              <el-icon><component :is="showManagedGroups ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
+            </div>
+            <div v-show="showManagedGroups">
+              <template v-if="managedGroups.length > 0">
+                <div v-for="group in managedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
+                  <el-avatar :size="36" shape="square">
+                    {{ getInitials(group.name) }}
+                  </el-avatar>
+                  <div class="group-info">
+                    <h4>{{ group.name }}</h4>
+                    <p>{{ group.members.length }}人</p>
+                  </div>
+                  <el-tooltip content="我管理的" placement="top">
+                    <el-icon color="#E6A23C"><Collection /></el-icon>
+                  </el-tooltip>
+                </div>
+              </template>
+              <el-empty v-else description="暂无我管理的群组" />
+            </div>
+          </div>
+          <!-- 我加入的群组 -->
+          <div>
+            <div class="group-category-header" @click="showJoinedGroups = !showJoinedGroups">
+              <el-icon><Collection /></el-icon>
+              <span>我加入的群组 ({{ joinedGroups.length }})</span>
+              <el-icon><component :is="showJoinedGroups ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
+            </div>
+            <div v-show="showJoinedGroups">
+              <template v-if="joinedGroups.length > 0">
+                <div v-for="group in joinedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
+                  <el-avatar :size="36" shape="square">
+                    {{ getInitials(group.name) }}
+                  </el-avatar>
+                  <div class="group-info">
+                    <h4>{{ group.name }}</h4>
+                    <p>{{ group.members.length }}人</p>
+                  </div>
+                  <el-tooltip content="我加入的" placement="top">
+                    <el-icon color="#67C23A"><Check /></el-icon>
+                  </el-tooltip>
+                </div>
+              </template>
+              <el-empty v-else description="暂无我加入的群组" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -356,7 +419,7 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 import { 
   ChatDotRound, UserFilled, Collection, 
   Setting, SwitchButton, Search, Plus, 
-  MoreFilled, Delete, Position, Star, Check, More 
+  MoreFilled, Delete, Position, Star, Check, More, ArrowDown, ArrowRight
 } from '@element-plus/icons-vue';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
@@ -402,9 +465,24 @@ const loading = computed(() => ({
 
 // 群组相关数据
 const allGroups = computed(() => gStore.allGroups);
-const myGroups = computed(() => gStore.myGroups);
 const groupSearchResults = ref([]);
 const groupSearchQuery = ref('');
+
+// 群组分类和展开状态
+const showCreatedGroups = ref(false);
+const showManagedGroups = ref(false);
+const showJoinedGroups = ref(false);
+
+const createdGroups = computed(() => gStore.allGroups.filter(g => g.ownerId === userInfoStore.userId));
+const managedGroups = computed(() => gStore.allGroups.filter(g => Array.isArray(g.adminIds) && g.adminIds.includes(userInfoStore.userId) && g.ownerId !== userInfoStore.userId));
+const joinedGroups = computed(() =>
+  gStore.allGroups.filter(g =>
+    Array.isArray(g.members) &&
+    g.members.some(m => m.id === userInfoStore.userId) &&
+    g.ownerId !== userInfoStore.userId &&
+    !(Array.isArray(g.adminIds) && g.adminIds.includes(userInfoStore.userId))
+  )
+);
 
 // 对话框显示状态
 const addFriendDialogVisible = ref(false);
@@ -732,6 +810,19 @@ const logout = async () => {
 </script>
 
 <style scoped>
+/* 群组分组标题样式 */
+.group-category-header {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 8px 16px;
+  font-weight: 500;
+  font-size: 15px;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color-overlay);
+  border-bottom: 1px solid var(--el-border-color-extra-light);
+  gap: 8px;
+}
 .chat-sidebar {
   display: flex;
   flex-direction: column;
@@ -785,7 +876,24 @@ const logout = async () => {
   display: flex;
   justify-content: space-around;
   background-color: var(--el-bg-color);
-  --el-menu-horizontal-height: 44px;
+  height: 44px;
+  align-items: center;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  padding: 0 16px;
+  height: 100%;
+  font-size: 15px;
+  color: var(--el-text-color-secondary);
+  border-bottom: 2px solid transparent;
+  transition: color 0.2s, border-color 0.2s;
+}
+.menu-item.active {
+  color: var(--el-color-primary);
+  border-bottom: 2px solid var(--el-color-primary);
+  background-color: var(--el-bg-color-page);
 }
 
 /* 列表容器 */

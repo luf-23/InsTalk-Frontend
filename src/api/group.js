@@ -31,6 +31,7 @@ public class GroupVO {
     private String description;
     private Long ownerId;
     private LocalDateTime createdAt;
+    private List<Long> adminIds;
     private List<Member> members;
     @Data
     public static class Member{
@@ -58,6 +59,7 @@ public class GroupVO {
     private String description;
     private Long ownerId;
     private LocalDateTime createdAt;
+    private List<Long> adminIds;
     private List<Member> members;
     @Data
     public static class Member{
@@ -87,6 +89,7 @@ public class GroupVO {
     private String description;
     private Long ownerId;
     private LocalDateTime createdAt;
+    private List<Long> adminIds;
     private List<Member> members;
     @Data
     public static class Member{
