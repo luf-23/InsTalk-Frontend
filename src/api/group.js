@@ -29,6 +29,7 @@ public class GroupVO {
     private Long id;
     private String name;
     private String description;
+    private String avatar;
     private Long ownerId;
     private LocalDateTime createdAt;
     private List<Long> adminIds;
@@ -57,6 +58,7 @@ public class GroupVO {
     private Long id;
     private String name;
     private String description;
+    private String avatar;
     private Long ownerId;
     private LocalDateTime createdAt;
     private List<Long> adminIds;
@@ -87,6 +89,7 @@ public class GroupVO {
     private Long id;
     private String name;
     private String description;
+    private String avatar;
     private Long ownerId;
     private LocalDateTime createdAt;
     private List<Long> adminIds;

@@ -81,7 +81,7 @@
             </el-avatar>
             <div class="chat-item-content">
               <div class="chat-item-header">
-                <h4>{{ chat.name }}</h4>
+                <h4>{{ displayChatName(chat) }}</h4>
                 <span class="time">{{ formatTime(chat.lastMessageTime) }}</span>
               </div>
               <div class="chat-item-message">
@@ -165,7 +165,7 @@
             <div v-show="showCreatedGroups">
               <template v-if="createdGroups.length > 0">
                 <div v-for="group in createdGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
-                  <el-avatar :size="36" shape="square">
+                  <el-avatar :size="36" shape="square" :src="group.avatar">
                     {{ getInitials(group.name) }}
                   </el-avatar>
                   <div class="group-info">
@@ -190,7 +190,7 @@
             <div v-show="showManagedGroups">
               <template v-if="managedGroups.length > 0">
                 <div v-for="group in managedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
-                  <el-avatar :size="36" shape="square">
+                  <el-avatar :size="36" shape="square" :src="group.avatar">
                     {{ getInitials(group.name) }}
                   </el-avatar>
                   <div class="group-info">
@@ -215,7 +215,7 @@
             <div v-show="showJoinedGroups">
               <template v-if="joinedGroups.length > 0">
                 <div v-for="group in joinedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
-                  <el-avatar :size="36" shape="square">
+                  <el-avatar :size="36" shape="square" :src="group.avatar">
                     {{ getInitials(group.name) }}
                   </el-avatar>
                   <div class="group-info">
@@ -387,7 +387,7 @@
               :key="group.id"
               class="search-result-item"
             >
-              <el-avatar :size="36" shape="square">
+              <el-avatar :size="36" shape="square" :src="group.avatar">
                 {{ getInitials(group.name) }}
               </el-avatar>
               <div class="group-info">
@@ -502,7 +502,7 @@ const createGroupForm = ref({
 const createGroupRules = {
   name: [
     { required: true, message: '请输入群组名称', trigger: 'blur' },
-    { min: 2, max: 20, message: '长度在 2 到 20 个字符', trigger: 'blur' }
+    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
   ],
   description: [
     { max: 100, message: '最多100个字符', trigger: 'blur' }
@@ -551,10 +551,28 @@ const isChatActive = (chat) => {
          msgStore.chatType === chat.type;
 };
 
+// 根据聊天对象获取展示名称
+const displayChatName = (chat) => {
+  if (!chat) return '';
+  if (chat.type === 'friend') {
+    const f = friendStore.friends.find(x => x.id === chat.id);
+    return f ? (f.nickname || f.username) : (chat.name || `用户 ${chat.id}`);
+  } else {
+    const g = gStore.allGroups.find(x => x.id === chat.id);
+    return g ? g.name : (chat.name || `群组 ${chat.id}`);
+  }
+};
+
 // 获取聊天头像
 const getChatAvatar = (chat) => {
-  // TODO: 根据chat.type获取正确的头像
-  return '';
+  if (!chat) return '';
+  if (chat.type === 'friend') {
+    const f = friendStore.friends.find(x => x.id === chat.id);
+    return f?.avatar || '';
+  } else {
+    const g = gStore.allGroups.find(x => x.id === chat.id);
+    return g?.avatar || '';
+  }
 };
 
 // 获取聊天首字母
@@ -750,7 +768,7 @@ const searchGroups = async () => {
   
   loading.value.searchGroup = true;
   try {
-    const result = await searchGroupByNameService({ name: groupSearchQuery.value });
+    const result = await searchGroupByNameService({ nameLike: groupSearchQuery.value });
     groupSearchResults.value = result || [];
   } catch (error) {
     ElMessage.error('搜索群组失败');
