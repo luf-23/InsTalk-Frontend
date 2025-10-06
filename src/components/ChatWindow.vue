@@ -271,7 +271,7 @@
         <!-- 好友信息 -->
         <template v-if="currentChat.type === 'friend'">
           <div class="chat-info-profile">
-            <el-avatar :size="100" :src="currentChat.avatar" class="profile-avatar">
+            <el-avatar :size="100" :src="chatAvatar" class="profile-avatar">
               {{ getInitials(currentChat.name) }}
             </el-avatar>
             <div class="profile-status" :class="{ 'online': isUserOnline }"></div>
@@ -318,7 +318,7 @@
         <!-- 群组信息 -->
         <template v-else-if="currentChat.type === 'group'">
           <div class="chat-info-profile">
-            <el-avatar :size="100" shape="square" :src="currentChat.avatar" class="profile-avatar">
+            <el-avatar :size="100" shape="square" :src="chatAvatar" class="profile-avatar">
               {{ getInitials(currentChat.name) }}
             </el-avatar>
             <h2>{{ currentChat.name }}</h2>
@@ -490,14 +490,14 @@ const chatTitle = computed(() => {
          (chatType.value === 'friend' ? '未命名用户' : '未命名群组');
 });
 
-// 计算聊天头像
+// 计算聊天头像（好友优先用好友头像，群聊优先用群store中的avatar）
 const chatAvatar = computed(() => {
   if (!currentChat.value) return '';
-  
   if (chatType.value === 'friend') {
     return friendInfo.value.avatar || '';
   } else {
-    return currentChat.value.avatar || '';
+    const group = gStore.allGroups.find(g => g.id === currentChat.value.id);
+    return group?.avatar || currentChat.value.avatar || '';
   }
 });
 

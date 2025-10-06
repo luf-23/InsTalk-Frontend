@@ -14,9 +14,9 @@ const getTimeForComparison = (timeString) => {
 };
 
 export const messageStore = defineStore('message', () => {
-    // 存储所有消息列表
+    // 存储所有和我有关的消息列表
     const messages = ref([]);
-    // 当前选中的聊天对象/群组：groupId或userId
+    // 当前选中的聊天对象/群组
     const currentChat = ref(null);
     // 当前聊天类型：'friend' | 'group'
     const chatType = ref('friend');
@@ -81,7 +81,7 @@ export const messageStore = defineStore('message', () => {
     });
 
     // 获取聊天列表（最近的对话）
-        const getChatList = computed(() => {
+    const getChatList = computed(() => {
             const chatMap = new Map();
             // 先按时间升序排序，保证后面覆盖的是最新的
             const sortedMessages = [...messages.value].sort((a, b) => getTimeForComparison(a.sendAt) - getTimeForComparison(b.sendAt));
