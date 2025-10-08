@@ -75,97 +75,152 @@
               </div>
               
               <div class="message-wrapper">
-                <!-- 头像 -->
-                <el-avatar 
-                  v-if="!isOwnMessage(message) && isLastMessageOfGroup(message, index)" 
-                  :size="40" 
-                  :src="getSenderAvatar(message)"
-                  class="message-avatar"
-                >
-                  {{ getSenderInitials(message) }}
-                </el-avatar>
-                
-                <div v-else-if="!isOwnMessage(message)" class="avatar-placeholder"></div>
-                
-                <!-- 消息内容 -->
-                <div class="message-content">
-                  <!-- 发送者名称 (群聊中且非本人) -->
-                  <div 
-                    v-if="currentChat.type === 'group' && !isOwnMessage(message) && isFirstMessageOfGroup(message, index)" 
-                    class="message-sender"
+                <!-- 他人消息布局：头像 - 内容区(消息+时间) -->
+                <template v-if="!isOwnMessage(message)">
+                  <el-avatar 
+                    :size="40" 
+                    :src="getSenderAvatar(message)"
+                    class="message-avatar left-avatar"
+                    :class="{ 'invisible-avatar': !isLastMessageOfGroup(message, index) }"
                   >
-                    {{ getSenderName(message) }}
-                  </div>
+                    {{ getSenderInitials(message) }}
+                  </el-avatar>
                   
-                  <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
-                    <!-- 根据消息类型显示内容 -->
-                    <template v-if="message.messageType === 'TEXT'">
-                      <div class="text-message">{{ message.content }}</div>
-                    </template>
-                    <template v-else-if="message.messageType === 'IMAGE'">
-                      <div class="image-message">
-                        <el-image 
-                          :src="message.content" 
-                          :preview-src-list="[message.content]"
-                          fit="cover"
-                          loading="lazy"
-                          class="message-image"
-                        >
-                          <template #placeholder>
-                            <div class="image-loading">
-                              <el-icon class="is-loading"><Loading /></el-icon>
-                            </div>
-                          </template>
-                          <template #error>
-                            <div class="image-error">
-                              <el-icon><Picture /></el-icon>
-                              <span>图片加载失败</span>
-                            </div>
-                          </template>
-                        </el-image>
-                      </div>
-                    </template>
-                    <template v-else-if="message.messageType === 'FILE'">
-                      <div class="file-message">
-                        <div class="file-icon">
-                          <el-icon><Document /></el-icon>
-                        </div>
-                        <div class="file-info">
-                          <div class="file-name">{{ getFileName(message.content) }}</div>
-                          <div class="file-actions">
-                            <el-button size="small" type="primary" plain @click="downloadFile(message.content)">
-                              <el-icon><Download /></el-icon> 下载
-                            </el-button>
+                  <div class="message-content">
+                    <!-- 发送者名称 (群聊中) -->
+                    <div 
+                      v-if="currentChat.type === 'group' && isFirstMessageOfGroup(message, index)" 
+                      class="message-sender"
+                    >
+                      {{ getSenderName(message) }}
+                    </div>
+                    
+                    <div class="message-row">
+                      <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
+                        <!-- 根据消息类型显示内容 -->
+                        <template v-if="message.messageType === 'TEXT'">
+                          <div class="text-message">{{ message.content }}</div>
+                        </template>
+                        <template v-else-if="message.messageType === 'IMAGE'">
+                          <div class="image-message">
+                            <el-image 
+                              :src="message.content" 
+                              :preview-src-list="[message.content]"
+                              fit="cover"
+                              loading="lazy"
+                              class="message-image"
+                            >
+                              <template #placeholder>
+                                <div class="image-loading">
+                                  <el-icon class="is-loading"><Loading /></el-icon>
+                                </div>
+                              </template>
+                              <template #error>
+                                <div class="image-error">
+                                  <el-icon><Picture /></el-icon>
+                                  <span>图片加载失败</span>
+                                </div>
+                              </template>
+                            </el-image>
                           </div>
-                        </div>
+                        </template>
+                        <template v-else-if="message.messageType === 'FILE'">
+                          <div class="file-message">
+                            <div class="file-icon">
+                              <el-icon><Document /></el-icon>
+                            </div>
+                            <div class="file-info">
+                              <div class="file-name">{{ getFileName(message.content) }}</div>
+                              <div class="file-actions">
+                                <el-button size="small" type="primary" plain @click="downloadFile(message.content)">
+                                  <el-icon><Download /></el-icon> 下载
+                                </el-button>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
                       </div>
-                    </template>
+                      
+                      <!-- 时间 -->
+                      <div class="message-meta">
+                        <span class="message-time">{{ formatTime(message.sendAt) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                
+                <!-- 自己消息布局：内容区(时间+消息) - 头像 -->
+                <template v-else>
+                  <div class="message-content">
+                    <div class="message-row">
+                      <!-- 时间和状态 -->
+                      <div class="message-meta">
+                        <span class="message-status">
+                          <el-icon v-if="message.status === 'sending'" class="status-icon is-loading"><Loading /></el-icon>
+                          <el-icon v-else-if="message.status === 'failed'" class="status-icon status-failed"><Warning /></el-icon>
+                          <el-icon v-else-if="message.status === 'sent'" class="status-icon"><Check /></el-icon>
+                          <el-icon v-else-if="message.status === 'delivered'" class="status-icon status-delivered"><CircleCheck /></el-icon>
+                          <el-icon v-else-if="message.status === 'read'" class="status-icon status-read"><CircleCheck /></el-icon>
+                        </span>
+                        <span class="message-time">{{ formatTime(message.sendAt) }}</span>
+                      </div>
+                      
+                      <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
+                        <!-- 根据消息类型显示内容 -->
+                        <template v-if="message.messageType === 'TEXT'">
+                          <div class="text-message">{{ message.content }}</div>
+                        </template>
+                        <template v-else-if="message.messageType === 'IMAGE'">
+                          <div class="image-message">
+                            <el-image 
+                              :src="message.content" 
+                              :preview-src-list="[message.content]"
+                              fit="cover"
+                              loading="lazy"
+                              class="message-image"
+                            >
+                              <template #placeholder>
+                                <div class="image-loading">
+                                  <el-icon class="is-loading"><Loading /></el-icon>
+                                </div>
+                              </template>
+                              <template #error>
+                                <div class="image-error">
+                                  <el-icon><Picture /></el-icon>
+                                  <span>图片加载失败</span>
+                                </div>
+                              </template>
+                            </el-image>
+                          </div>
+                        </template>
+                        <template v-else-if="message.messageType === 'FILE'">
+                          <div class="file-message">
+                            <div class="file-icon">
+                              <el-icon><Document /></el-icon>
+                            </div>
+                            <div class="file-info">
+                              <div class="file-name">{{ getFileName(message.content) }}</div>
+                              <div class="file-actions">
+                                <el-button size="small" type="primary" plain @click="downloadFile(message.content)">
+                                  <el-icon><Download /></el-icon> 下载
+                                </el-button>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
                   </div>
                   
-                  <!-- 时间和状态 -->
-                  <div class="message-meta">
-                    <span class="message-time">{{ formatTime(message.sendAt) }}</span>
-                    <span v-if="isOwnMessage(message)" class="message-status">
-                      <el-icon v-if="message.status === 'sent'" class="status-icon"><Check /></el-icon>
-                      <el-icon v-else-if="message.status === 'delivered'" class="status-icon status-delivered"><CircleCheck /></el-icon>
-                      <el-icon v-else-if="message.status === 'read'" class="status-icon status-read"><CircleCheck /></el-icon>
-                      <el-icon v-else-if="message.status === 'sending'" class="status-icon is-loading"><Loading /></el-icon>
-                      <el-icon v-else-if="message.status === 'failed'" class="status-icon status-failed"><Warning /></el-icon>
-                    </span>
-                  </div>
-                </div>
-                
-                <!-- 本人消息的头像 -->
-                <el-avatar 
-                  v-if="isOwnMessage(message) && isLastMessageOfGroup(message, index)" 
-                  :size="40" 
-                  :src="userAvatar"
-                  class="message-avatar"
-                >
-                  {{ userInitials }}
-                </el-avatar>
-                
-                <div v-else-if="isOwnMessage(message)" class="avatar-placeholder"></div>
+                  <el-avatar 
+                    :size="40" 
+                    :src="userAvatar"
+                    class="message-avatar right-avatar"
+                    :class="{ 'invisible-avatar': !isLastMessageOfGroup(message, index) }"
+                  >
+                    {{ userInitials }}
+                  </el-avatar>
+                </template>
               </div>
             </div>
           </template>
@@ -1059,14 +1114,18 @@ const getInitials = (name) => {
 }
 
 .message-container {
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   position: relative;
   max-width: 100%;
   transition: all 0.2s ease;
 }
 
 .message-container.first-of-group {
-  margin-top: 12px;
+  margin-top: 8px;
+}
+
+.message-container.last-of-group {
+  margin-bottom: 8px;
 }
 
 .date-divider {
@@ -1101,37 +1160,42 @@ const getInitials = (name) => {
 
 .message-wrapper {
   display: flex;
-  align-items: flex-end;
-  margin: 2px 0;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 0 12px;
 }
 
+/* 自己的消息：内容区右对齐 */
 .own-message .message-wrapper {
-  flex-direction: row-reverse;
+  justify-content: flex-end;
 }
 
 .message-avatar {
-  margin-right: 8px;
   flex-shrink: 0;
-  border: 2px solid transparent;
-  transition: transform 0.2s ease;
+  transition: all 0.2s ease;
+  margin-top: 0;
 }
 
-.own-message .message-avatar {
-  margin-right: 0;
-  margin-left: 8px;
+.message-avatar.left-avatar {
+  order: 1;
 }
 
-.avatar-placeholder {
-  width: 40px;
-  height: 10px;
-  flex-shrink: 0;
+.message-avatar.right-avatar {
+  order: 3;
+}
+
+/* 隐藏头像但保留空间 */
+.message-avatar.invisible-avatar {
+  visibility: hidden;
 }
 
 .message-content {
   flex: 0 1 auto;
-  max-width: 65%;
+  max-width: calc(100% - 60px);
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  order: 2;
 }
 
 .own-message .message-content {
@@ -1142,41 +1206,32 @@ const getInitials = (name) => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
   margin-bottom: 4px;
-  margin-left: 12px;
+  padding: 0 8px;
+}
+
+.message-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  position: relative;
 }
 
 .message-bubble {
-  padding: 10px 14px;
-  border-radius: 18px;
-  background-color: #f2f2f7;
+  padding: 9px 12px;
+  border-radius: 4px;
+  background-color: #ffffff;
   position: relative;
   display: inline-block;
   max-width: 100%;
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
-  margin: 0 4px;
 }
 
+/* 自己的消息气泡 - QQ蓝色 */
 .own-message .message-bubble {
-  background-color: var(--el-color-primary-light-8);
-  color: var(--el-color-primary-dark-2);
-}
-
-.first-of-group:not(.own-message) .message-bubble {
-  border-top-left-radius: 4px;
-}
-
-.last-of-group:not(.own-message) .message-bubble {
-  border-bottom-left-radius: 18px;
-}
-
-.first-of-group.own-message .message-bubble {
-  border-top-right-radius: 4px;
-}
-
-.last-of-group.own-message .message-bubble {
-  border-bottom-right-radius: 18px;
+  background: linear-gradient(135deg, #a6c1ee 0%, #b3d4fc 100%);
+  color: #000000;
 }
 
 .message-bubble:hover {
@@ -1185,8 +1240,8 @@ const getInitials = (name) => {
 
 .text-message {
   white-space: pre-wrap;
-  line-height: 1.4;
-  font-size: 15px;
+  line-height: 1.5;
+  font-size: 14px;
 }
 
 /* 图片消息 */
@@ -1196,19 +1251,23 @@ const getInitials = (name) => {
   box-shadow: none;
 }
 
+.own-message .message-type-image .message-bubble {
+  background: transparent;
+}
+
 .image-message {
   max-width: 240px;
   max-height: 320px;
-  border-radius: 12px;
+  border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
 .message-image {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 12px;
+  border-radius: 4px;
   transition: all 0.3s ease;
 }
 
@@ -1226,7 +1285,7 @@ const getInitials = (name) => {
   background-color: var(--el-fill-color-light);
   color: var(--el-text-color-secondary);
   font-size: 13px;
-  border-radius: 12px;
+  border-radius: 4px;
 }
 
 .image-loading .el-icon, .image-error .el-icon {
@@ -1241,6 +1300,10 @@ const getInitials = (name) => {
   min-width: 220px;
 }
 
+.own-message .message-type-file .message-bubble {
+  background: linear-gradient(135deg, #a6c1ee 0%, #b3d4fc 100%);
+}
+
 .file-message {
   display: flex;
   align-items: center;
@@ -1253,14 +1316,22 @@ const getInitials = (name) => {
   width: 40px;
   height: 40px;
   background-color: var(--el-color-primary-light-9);
-  border-radius: 8px;
+  border-radius: 6px;
   margin-right: 12px;
   flex-shrink: 0;
+}
+
+.own-message .file-icon {
+  background-color: rgba(255, 255, 255, 0.3);
 }
 
 .file-icon .el-icon {
   font-size: 20px;
   color: var(--el-color-primary);
+}
+
+.own-message .file-icon .el-icon {
+  color: #1e3a8a;
 }
 
 .file-info {
@@ -1283,23 +1354,31 @@ const getInitials = (name) => {
   justify-content: flex-end;
 }
 
-/* 消息元数据 */
+/* 消息元数据 - hover时显示 */
 .message-meta {
   display: flex;
   align-items: center;
-  margin-top: 4px;
-  padding: 0 8px;
   font-size: 11px;
   color: var(--el-text-color-secondary);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.message-container:hover .message-meta {
+  opacity: 1;
 }
 
 .message-time {
-  margin-right: 6px;
+  order: 2;
 }
 
 .message-status {
   display: flex;
   align-items: center;
+  order: 1;
 }
 
 .status-icon {
@@ -1748,7 +1827,7 @@ const getInitials = (name) => {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .message-content {
-    max-width: 80%;
+    max-width: calc(100% - 60px);
   }
   
   .image-message {
@@ -1771,6 +1850,10 @@ const getInitials = (name) => {
   .emoji-picker {
     grid-template-columns: repeat(6, 1fr);
   }
+  
+  .message-wrapper {
+    padding: 0 8px;
+  }
 }
 
 /* 暗黑模式调整 */
@@ -1779,12 +1862,13 @@ const getInitials = (name) => {
 }
 
 :deep(.dark-mode) .message-bubble {
-  background-color: #383838;
+  background-color: #2d2d2d;
+  color: #e5e5e5;
 }
 
 :deep(.dark-mode) .own-message .message-bubble {
-  background-color: var(--el-color-primary-light-3);
-  color: white;
+  background: linear-gradient(135deg, #4a7ab8 0%, #5a8fd8 100%);
+  color: #ffffff;
 }
 
 :deep(.dark-mode) .textarea-wrapper {
@@ -1793,5 +1877,13 @@ const getInitials = (name) => {
 
 :deep(.dark-mode) .textarea-wrapper.focused {
   background-color: #404040;
+}
+
+:deep(.dark-mode) .own-message .file-icon {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+:deep(.dark-mode) .own-message .file-icon .el-icon {
+  color: #bfdbfe;
 }
 </style>
