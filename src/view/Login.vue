@@ -90,7 +90,7 @@ const handleLogin = async () => {
     const userInfo = {
       id: result.id,
       username: result.username,
-      nickname: result.nickname,
+      signature: result.signature,
       email: result.email,
       avatar: result.avatar,
       role: result.role,

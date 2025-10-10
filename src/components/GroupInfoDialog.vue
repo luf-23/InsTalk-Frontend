@@ -54,10 +54,11 @@
                 </el-avatar>
                 <div class="member-info">
                   <div class="member-name">
-                    {{ member.nickname || member.username }}
+                    {{ member.username }}
                     <el-tag size="small" v-if="isGroupOwner(member.id)" type="danger">群主</el-tag>
                     <el-tag size="small" v-else-if="isGroupAdmin(member.id)" type="warning">管理员</el-tag>
                   </div>
+                  <div class="member-signature" v-if="member.signature">{{ member.signature }}</div>
                   <div class="member-status" :class="{ 'online': isUserOnline(member.id) }">
                     {{ isUserOnline(member.id) ? '在线' : '离线' }}
                   </div>
@@ -315,8 +316,7 @@ const filteredMembers = computed(() => {
   
   const keyword = memberSearchKeyword.value.toLowerCase();
   return groupMembers.value.filter(member => {
-    return (member.username && member.username.toLowerCase().includes(keyword)) || 
-           (member.nickname && member.nickname.toLowerCase().includes(keyword));
+    return (member.username && member.username.toLowerCase().includes(keyword));
   });
 });
 
@@ -426,7 +426,7 @@ const getSenderName = (message) => {
   if (message.senderId === currentUserId.value) return '我';
   
   const sender = groupMembers.value.find(m => m.id === message.senderId);
-  return sender?.nickname || sender?.username || '未知用户';
+  return sender?.username || '未知用户';
 };
 
 const getFileName = (url) => {
@@ -515,7 +515,7 @@ const removeAdmin = (memberId) => {
 
 const confirmRemoveMember = (member) => {
   ElMessageBox.confirm(
-    `确定要将 ${member.nickname || member.username} 移出群组吗？`,
+    `确定要将 ${member.username} 移出群组吗？`,
     '移出成员',
     {
       confirmButtonText: '确定',
@@ -726,6 +726,16 @@ watch(visible, (newVal) => {
 
 .member-status.online {
   color: #10b981;
+}
+
+.member-signature {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 2px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .action-icon {

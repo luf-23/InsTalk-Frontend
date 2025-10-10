@@ -4,7 +4,7 @@ import request from "@/util/request";
 public class LoginVO {
     private Long id;
     private String username;
-    private String nickname;
+    private String signature;
     private String email;
     private String avatar;
     private String role;

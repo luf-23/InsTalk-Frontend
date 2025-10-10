@@ -55,7 +55,7 @@ export const deleteFriendService = (params) => {
 public class FriendVO {
     private Long id;
     private String username;
-    private String nickname;
+    private String signature;
     private String avatar;
     private LocalDateTime createdAt;
 }
@@ -76,7 +76,7 @@ export const getFriendListService = () => {
 public class FriendVO {
     private Long id;
     private String username;
-    private String nickname;
+    private String signature;
     private String avatar;
     private LocalDateTime createdAt;
 }
@@ -98,7 +98,7 @@ export const getPendingListService = () => {
 public class FriendVO {
     private Long id;
     private String username;
-    private String nickname;
+    private String signature;
     private String avatar;
     private LocalDateTime createdAt;
 }

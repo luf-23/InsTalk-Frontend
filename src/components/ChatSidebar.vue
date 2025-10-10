@@ -122,8 +122,8 @@
                 {{ getInitials(friend.username) }}
               </el-avatar>
               <div class="friend-info">
-                <h4>{{ friend.nickname || friend.username }}</h4>
-                <p v-if="friend.nickname">@{{ friend.username }}</p>
+                <h4>{{ friend.username }}</h4>
+                <p v-if="friend.signature">{{ friend.signature }}</p>
               </div>
               <el-dropdown trigger="click" @click.stop>
                 <el-icon class="item-more-icon"><MoreFilled /></el-icon>
@@ -304,8 +304,8 @@
                 {{ getInitials(user.username) }}
               </el-avatar>
               <div class="user-info">
-                <h4>{{ user.nickname || user.username }}</h4>
-                <p v-if="user.nickname">@{{ user.username }}</p>
+                <h4>{{ user.username }}</h4>
+                <p v-if="user.signature">{{ user.signature }}</p>
               </div>
               <el-button
                 :type="isFriend(user) ? 'info' : 'primary'"
@@ -342,8 +342,8 @@
               {{ getInitials(request.username) }}
             </el-avatar>
             <div class="user-info">
-              <h4>{{ request.nickname || request.username }}</h4>
-              <p v-if="request.nickname">@{{ request.username }}</p>
+              <h4>{{ request.username }}</h4>
+              <p v-if="request.signature">{{ request.signature }}</p>
             </div>
             <div class="request-actions">
               <el-button
@@ -627,7 +627,7 @@ const displayChatName = (chat) => {
   if (!chat) return '';
   if (chat.type === 'friend') {
     const f = friendStore.friends.find(x => x.id === chat.id);
-    return f ? (f.nickname || f.username) : (chat.name || `用户 ${chat.id}`);
+    return f ? f.username : (chat.name || `用户 ${chat.id}`);
   } else {
     const g = gStore.allGroups.find(x => x.id === chat.id);
     return g ? g.name : (chat.name || `群组 ${chat.id}`);
@@ -720,7 +720,7 @@ const startChat = (target, type) => {
   const chat = {
     id: target.id,
     type: type,
-    name: type === 'friend' ? (target.nickname || target.username) : target.name
+    name: type === 'friend' ? target.username : target.name
   };
   
   // 设置为当前聊天
@@ -781,7 +781,7 @@ const rejectFriendRequest = async (requestId) => {
 // 删除好友确认
 const deleteFriendConfirm = (friend) => {
   ElMessageBox.confirm(
-    `确定要删除好友 ${friend.nickname || friend.username} 吗？`,
+    `确定要删除好友 ${friend.username} 吗？`,
     '删除好友',
     {
       confirmButtonText: '确定',
