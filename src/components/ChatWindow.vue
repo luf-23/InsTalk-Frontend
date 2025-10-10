@@ -331,9 +331,9 @@
               {{ getInitials(currentChat.name) }}
             </el-avatar>
             <div class="profile-status" :class="{ 'online': isUserOnline }"></div>
-            <h2>{{ currentChat.name }}</h2>
-            <p v-if="friendInfo.username && friendInfo.username !== friendInfo.nickname" class="profile-username">
-              @{{ friendInfo.username }}
+            <h2>{{ friendInfo.username }}</h2>
+            <p v-if="friendInfo.signature" class="profile-signature">
+              {{ friendInfo.signature }}
             </p>
           </div>
           
@@ -343,10 +343,6 @@
                 <div class="info-item">
                   <span class="info-label">用户名</span>
                   <span class="info-value">{{ friendInfo.username }}</span>
-                </div>
-                <div class="info-item" v-if="friendInfo.bio">
-                  <span class="info-label">个人简介</span>
-                  <span class="info-value">{{ friendInfo.bio || '暂无简介' }}</span>
                 </div>
                 <div class="info-item">
                   <span class="info-label">成为好友时间</span>
@@ -417,10 +413,11 @@
                     </el-avatar>
                     <div class="member-info">
                       <div class="member-name">
-                        {{ member.nickname || member.username }}
+                        {{ member.username }}
                         <el-tag size="small" v-if="isGroupOwner(member.id)" type="danger" class="role-tag">群主</el-tag>
                         <el-tag size="small" v-else-if="isGroupAdmin(member.id)" type="warning" class="role-tag">管理员</el-tag>
                       </div>
+                      <div class="member-signature" v-if="member.signature">{{ member.signature }}</div>
                       <div class="member-status" :class="{ 'online': isUserOnline }">
                         {{ isUserOnline ? '在线' : '离线' }}
                       </div>
@@ -575,8 +572,7 @@ const filteredGroupMembers = computed(() => {
   
   const keyword = memberSearchKeyword.value.toLowerCase();
   return groupMembers.value.filter(member => {
-    return (member.username && member.username.toLowerCase().includes(keyword)) || 
-           (member.nickname && member.nickname.toLowerCase().includes(keyword));
+    return (member.username && member.username.toLowerCase().includes(keyword));
   });
 });
 
@@ -677,10 +673,10 @@ const getSenderInitials = (message) => {
   if (isOwnMessage(message)) return userInitials.value;
   
   if (chatType.value === 'friend') {
-    return getInitials(friendInfo.value.nickname || friendInfo.value.username);
+    return getInitials(friendInfo.value.username);
   } else {
     const sender = groupMembers.value.find(member => member.id === message.senderId);
-    return getInitials(sender?.nickname || sender?.username || '?');
+    return getInitials(sender?.username || '?');
   }
 };
 
@@ -689,7 +685,7 @@ const getSenderName = (message) => {
   if (isOwnMessage(message)) return '我';
   
   const sender = groupMembers.value.find(member => member.id === message.senderId);
-  return sender?.nickname || sender?.username || '未知用户';
+  return sender?.username || '未知用户';
 };
 
 // 格式化日期
@@ -1614,10 +1610,11 @@ const getInitials = (name) => {
   font-weight: 600;
 }
 
-.profile-username {
-  margin: 0;
-  font-size: 14px;
+.profile-signature {
+  margin: 8px 0;
+  font-size: 13px;
   color: var(--el-text-color-secondary);
+  font-style: italic;
 }
 
 .group-id {
@@ -1762,6 +1759,16 @@ const getInitials = (name) => {
 
 .member-status.online {
   color: #10b981;
+}
+
+.member-signature {
+  font-size: 11px;
+  color: var(--el-text-color-placeholder);
+  margin-top: 2px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .member-actions {

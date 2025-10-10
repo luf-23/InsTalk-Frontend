@@ -16,8 +16,8 @@ export const useUserInfoStore = defineStore(
     // 获取用户名
     const username = computed(() => userInfo.value?.username || '');
 
-    // 获取用户昵称
-    const nickname = computed(() => userInfo.value?.nickname || '');
+    // 获取用户个性签名
+    const signature = computed(() => userInfo.value?.signature || '');
     
     // 获取用户头像
     const avatar = computed(() => userInfo.value?.avatar || '');
@@ -56,7 +56,7 @@ export const useUserInfoStore = defineStore(
       hasUserInfo,
       userId,
       username,
-      nickname,
+      signature,
       avatar,
       email,
       role,

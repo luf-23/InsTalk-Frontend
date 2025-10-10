@@ -20,8 +20,8 @@
             </div>
           </el-tooltip>
         </div>
-        <h2>{{ userInfo.nickname || userInfo.username }}</h2>
-        <p v-if="userInfo.nickname" class="username">@{{ userInfo.username }}</p>
+        <h2>{{ userInfo.username }}</h2>
+        <p v-if="userInfo.signature" class="user-signature">{{ userInfo.signature }}</p>
       </div>
 
       <!-- 详细信息 -->
@@ -33,55 +33,29 @@
               <span class="info-value">{{ userInfo.username }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">昵称</span>
+              <span class="info-label">个性签名</span>
               <div class="info-value editable">
-                <span v-if="!editingNickname">{{ userInfo.nickname || '未设置' }}</span>
+                <span v-if="!editingSignature">{{ userInfo.signature || '这个人很懒，什么都没写' }}</span>
                 <el-input
                   v-else
-                  v-model="editForm.nickname"
+                  v-model="editForm.signature"
                   size="small"
-                  maxlength="20"
+                  maxlength="50"
                   show-word-limit
+                  placeholder="填写个性签名"
                 />
                 <el-button
-                  v-if="!editingNickname"
+                  v-if="!editingSignature"
                   type="primary"
                   link
                   size="small"
-                  @click="startEditNickname"
+                  @click="startEditSignature"
                 >
                   编辑
                 </el-button>
                 <div v-else class="edit-actions">
-                  <el-button type="primary" link size="small" @click="saveNickname">保存</el-button>
-                  <el-button link size="small" @click="cancelEditNickname">取消</el-button>
-                </div>
-              </div>
-            </div>
-            <div class="info-item">
-              <span class="info-label">个人简介</span>
-              <div class="info-value editable">
-                <span v-if="!editingBio">{{ userInfo.bio || '这个人很懒，什么都没写' }}</span>
-                <el-input
-                  v-else
-                  v-model="editForm.bio"
-                  type="textarea"
-                  :rows="3"
-                  maxlength="100"
-                  show-word-limit
-                />
-                <el-button
-                  v-if="!editingBio"
-                  type="primary"
-                  link
-                  size="small"
-                  @click="startEditBio"
-                >
-                  编辑
-                </el-button>
-                <div v-else class="edit-actions">
-                  <el-button type="primary" link size="small" @click="saveBio">保存</el-button>
-                  <el-button link size="small" @click="cancelEditBio">取消</el-button>
+                  <el-button type="primary" link size="small" @click="saveSignature">保存</el-button>
+                  <el-button link size="small" @click="cancelEditSignature">取消</el-button>
                 </div>
               </div>
             </div>
@@ -204,19 +178,17 @@ const visible = computed({
 });
 
 const activeTab = ref('basic');
-const editingNickname = ref(false);
-const editingBio = ref(false);
+const editingSignature = ref(false);
 const avatarInputRef = ref(null);
 
 const editForm = ref({
-  nickname: '',
-  bio: ''
+  signature: ''
 });
 
 // 用户信息
 const userInfo = computed(() => ({
   username: userInfoStore.username,
-  nickname: userInfoStore.nickname,
+  signature: userInfoStore.signature,
   avatar: userInfoStore.avatar,
   role: userInfoStore.role,
   email: userInfoStore.email,
@@ -276,45 +248,23 @@ const handleAvatarUpload = (event) => {
   event.target.value = '';
 };
 
-// 编辑昵称
-const startEditNickname = () => {
-  editForm.value.nickname = userInfo.value.nickname || '';
-  editingNickname.value = true;
+// 编辑个性签名
+const startEditSignature = () => {
+  editForm.value.signature = userInfo.value.signature || '';
+  editingSignature.value = true;
 };
 
-const saveNickname = async () => {
-  if (!editForm.value.nickname.trim()) {
-    ElMessage.warning('昵称不能为空');
-    return;
-  }
-
-  // TODO: 调用API保存昵称
-  ElMessage.success('昵称保存成功');
-  userInfoStore.nickname = editForm.value.nickname;
-  editingNickname.value = false;
+const saveSignature = async () => {
+  // 个性签名可以为空
+  // TODO: 调用API保存个性签名
+  ElMessage.success('个性签名保存成功');
+  userInfoStore.signature = editForm.value.signature;
+  editingSignature.value = false;
 };
 
-const cancelEditNickname = () => {
-  editingNickname.value = false;
-  editForm.value.nickname = '';
-};
-
-// 编辑个人简介
-const startEditBio = () => {
-  editForm.value.bio = userInfo.value.bio || '';
-  editingBio.value = true;
-};
-
-const saveBio = async () => {
-  // TODO: 调用API保存简介
-  ElMessage.success('个人简介保存成功');
-  userInfoStore.bio = editForm.value.bio;
-  editingBio.value = false;
-};
-
-const cancelEditBio = () => {
-  editingBio.value = false;
-  editForm.value.bio = '';
+const cancelEditSignature = () => {
+  editingSignature.value = false;
+  editForm.value.signature = '';
 };
 
 // 修改密码
@@ -385,10 +335,13 @@ const showBindEmail = () => {
   color: var(--el-text-color-primary);
 }
 
-.username {
-  margin: 4px 0 0;
+.user-signature {
+  margin: 8px 0 0;
   font-size: 14px;
   color: var(--el-text-color-secondary);
+  font-style: italic;
+  max-width: 80%;
+  text-align: center;
 }
 
 .info-section {

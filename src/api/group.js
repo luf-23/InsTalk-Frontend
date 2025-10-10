@@ -38,7 +38,7 @@ public class GroupVO {
     public static class Member{
         private Long id;
         private String username;
-        private String nickname;
+        private String signature;
         private String avatar;
     }
 }
@@ -67,7 +67,7 @@ public class GroupVO {
     public static class Member{
         private Long id;
         private String username;
-        private String nickname;
+        private String signature;
         private String avatar;
     }
 }
@@ -98,7 +98,7 @@ public class GroupVO {
     public static class Member{
         private Long id;
         private String username;
-        private String nickname;
+        private String signature;
         private String avatar;
     }
 }

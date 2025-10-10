@@ -14,9 +14,9 @@
           {{ getInitials(friendInfo.username) }}
         </el-avatar>
         <div class="profile-status" :class="{ 'online': isOnline }"></div>
-        <h2>{{ friendInfo.nickname || friendInfo.username }}</h2>
-        <p v-if="friendInfo.nickname" class="profile-username">
-          @{{ friendInfo.username }}
+        <h2>{{ friendInfo.username }}</h2>
+        <p v-if="friendInfo.signature" class="profile-signature">
+          {{ friendInfo.signature }}
         </p>
         <div class="online-status" :class="{ 'online': isOnline }">
           {{ isOnline ? '在线' : '离线' }}
@@ -31,12 +31,8 @@
               <span class="info-value">{{ friendInfo.username }}</span>
             </div>
             <div class="info-item">
-              <span class="info-label">昵称</span>
-              <span class="info-value">{{ friendInfo.nickname || '未设置' }}</span>
-            </div>
-            <div class="info-item" v-if="friendInfo.bio">
-              <span class="info-label">个人简介</span>
-              <span class="info-value">{{ friendInfo.bio || '暂无简介' }}</span>
+              <span class="info-label">个性签名</span>
+              <span class="info-value">{{ friendInfo.signature || '这个人很懒，什么都没写' }}</span>
             </div>
             <div class="info-item">
               <span class="info-label">成为好友</span>
@@ -76,7 +72,7 @@
                 >
                   <div class="message-header">
                     <span class="message-sender">
-                      {{ isOwnMessage(message) ? '我' : (friendInfo.nickname || friendInfo.username) }}
+                      {{ isOwnMessage(message) ? '我' : friendInfo.username }}
                     </span>
                     <span class="message-time">{{ formatDateTime(message.sendAt) }}</span>
                   </div>
@@ -308,7 +304,7 @@ const startChat = () => {
 
 const confirmDelete = () => {
   ElMessageBox.confirm(
-    `确定要删除好友 ${friendInfo.value.nickname || friendInfo.value.username} 吗？`,
+    `确定要删除好友 ${friendInfo.value.username} 吗？`,
     '删除好友',
     {
       confirmButtonText: '确定',
@@ -385,10 +381,13 @@ watch(visible, (newVal) => {
   font-weight: 600;
 }
 
-.profile-username {
-  margin: 4px 0 8px;
+.profile-signature {
+  margin: 8px 0;
   font-size: 14px;
   color: var(--el-text-color-secondary);
+  font-style: italic;
+  text-align: center;
+  max-width: 80%;
 }
 
 .online-status {
