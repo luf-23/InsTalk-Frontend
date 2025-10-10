@@ -2,10 +2,10 @@
   <div class="chat-sidebar">
     <!-- 用户信息区域 -->
     <div class="user-profile">
-      <el-avatar :size="40" :src="userAvatar" @error="avatarError">
+      <el-avatar :size="40" :src="userAvatar" @error="avatarError" class="clickable-avatar" @click="showUserProfile">
         {{ userInitials }}
       </el-avatar>
-      <div class="user-info">
+      <div class="user-info" @click="showUserProfile">
         <h3>{{ username }}</h3>
         <el-tag size="small" type="info">{{ userRole === 'admin' ? '管理员' : '用户' }}</el-tag>
       </div>
@@ -13,6 +13,9 @@
         <el-icon class="more-icon"><More /></el-icon>
         <template #dropdown>
           <el-dropdown-menu>
+            <el-dropdown-item @click="showUserProfile">
+              <el-icon><User /></el-icon>个人信息
+            </el-dropdown-item>
             <el-dropdown-item @click="showUserSettings">
               <el-icon><Setting /></el-icon>个人设置
             </el-dropdown-item>
@@ -123,13 +126,16 @@
                 <p v-if="friend.nickname">@{{ friend.username }}</p>
               </div>
               <el-dropdown trigger="click" @click.stop>
-                <el-icon><MoreFilled /></el-icon>
+                <el-icon class="item-more-icon"><MoreFilled /></el-icon>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <el-dropdown-item @click.stop="showFriendInfo(friend)">
+                      <el-icon><InfoFilled /></el-icon>查看信息
+                    </el-dropdown-item>
                     <el-dropdown-item @click.stop="startChat(friend, 'friend')">
                       <el-icon><ChatDotRound /></el-icon>发送消息
                     </el-dropdown-item>
-                    <el-dropdown-item @click.stop="deleteFriendConfirm(friend)">
+                    <el-dropdown-item @click.stop="deleteFriendConfirm(friend)" divided>
                       <el-icon><Delete /></el-icon>删除好友
                     </el-dropdown-item>
                   </el-dropdown-menu>
@@ -172,9 +178,19 @@
                     <h4>{{ group.name }}</h4>
                     <p>{{ group.members.length }}人</p>
                   </div>
-                  <el-tooltip content="我创建的" placement="top">
-                    <el-icon color="#409EFF"><Star /></el-icon>
-                  </el-tooltip>
+                  <el-dropdown trigger="click" @click.stop>
+                    <el-icon class="item-more-icon"><MoreFilled /></el-icon>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click.stop="showGroupInfo(group)">
+                          <el-icon><InfoFilled /></el-icon>查看详情
+                        </el-dropdown-item>
+                        <el-dropdown-item @click.stop="startChat(group, 'group')">
+                          <el-icon><ChatDotRound /></el-icon>进入群聊
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
               </template>
               <el-empty v-else description="暂无我创建的群组" />
@@ -197,9 +213,19 @@
                     <h4>{{ group.name }}</h4>
                     <p>{{ group.members.length }}人</p>
                   </div>
-                  <el-tooltip content="我管理的" placement="top">
-                    <el-icon color="#E6A23C"><Collection /></el-icon>
-                  </el-tooltip>
+                  <el-dropdown trigger="click" @click.stop>
+                    <el-icon class="item-more-icon"><MoreFilled /></el-icon>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click.stop="showGroupInfo(group)">
+                          <el-icon><InfoFilled /></el-icon>查看详情
+                        </el-dropdown-item>
+                        <el-dropdown-item @click.stop="startChat(group, 'group')">
+                          <el-icon><ChatDotRound /></el-icon>进入群聊
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
               </template>
               <el-empty v-else description="暂无我管理的群组" />
@@ -222,9 +248,22 @@
                     <h4>{{ group.name }}</h4>
                     <p>{{ group.members.length }}人</p>
                   </div>
-                  <el-tooltip content="我加入的" placement="top">
-                    <el-icon color="#67C23A"><Check /></el-icon>
-                  </el-tooltip>
+                  <el-dropdown trigger="click" @click.stop>
+                    <el-icon class="item-more-icon"><MoreFilled /></el-icon>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item @click.stop="showGroupInfo(group)">
+                          <el-icon><InfoFilled /></el-icon>查看详情
+                        </el-dropdown-item>
+                        <el-dropdown-item @click.stop="startChat(group, 'group')">
+                          <el-icon><ChatDotRound /></el-icon>进入群聊
+                        </el-dropdown-item>
+                        <el-dropdown-item @click.stop="leaveGroupConfirm(group)" divided>
+                          <el-icon><RemoveFilled /></el-icon>退出群组
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
                 </div>
               </template>
               <el-empty v-else description="暂无我加入的群组" />
@@ -409,6 +448,27 @@
         </div>
       </div>
     </el-dialog>
+
+    <!-- 用户个人信息对话框 -->
+    <UserProfileDialog v-model="userProfileDialogVisible" @close="userProfileDialogVisible = false" />
+
+    <!-- 好友信息对话框 -->
+    <FriendInfoDialog 
+      v-model="friendInfoDialogVisible" 
+      :friend-id="selectedFriendId"
+      @close="friendInfoDialogVisible = false"
+      @startChat="handleFriendStartChat"
+      @delete="handleFriendDelete"
+    />
+
+    <!-- 群组信息对话框 -->
+    <GroupInfoDialog 
+      v-model="groupInfoDialogVisible" 
+      :group-id="selectedGroupId"
+      @close="groupInfoDialogVisible = false"
+      @sendMessage="handleGroupSendMessage"
+      @leave="handleGroupLeave"
+    />
   </div>
 </template>
 
@@ -419,8 +479,12 @@ import { ElMessageBox, ElMessage } from 'element-plus';
 import { 
   ChatDotRound, UserFilled, Collection, 
   Setting, SwitchButton, Search, Plus, 
-  MoreFilled, Delete, Position, Star, Check, More, ArrowDown, ArrowRight
+  MoreFilled, Delete, Position, Star, Check, More, ArrowDown, ArrowRight,
+  User, InfoFilled, RemoveFilled
 } from '@element-plus/icons-vue';
+import UserProfileDialog from './UserProfileDialog.vue';
+import FriendInfoDialog from './FriendInfoDialog.vue';
+import GroupInfoDialog from './GroupInfoDialog.vue';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
@@ -489,6 +553,13 @@ const addFriendDialogVisible = ref(false);
 const pendingRequestsDialogVisible = ref(false);
 const createGroupDialogVisible = ref(false);
 const joinGroupDialogVisible = ref(false);
+const userProfileDialogVisible = ref(false);
+const friendInfoDialogVisible = ref(false);
+const groupInfoDialogVisible = ref(false);
+
+// 选中的好友和群组ID
+const selectedFriendId = ref(null);
+const selectedGroupId = ref(null);
 
 // 添加好友搜索查询
 const friendSearchQuery = ref('');
@@ -797,9 +868,62 @@ const isMyGroup = (group) => {
   return group.ownerId === userInfoStore.userId;
 };
 
+// 显示用户个人信息
+const showUserProfile = () => {
+  userProfileDialogVisible.value = true;
+};
+
 // 显示用户设置
 const showUserSettings = () => {
   ElMessage.info('个人设置功能正在开发中');
+};
+
+// 显示好友信息
+const showFriendInfo = (friend) => {
+  selectedFriendId.value = friend.id;
+  friendInfoDialogVisible.value = true;
+};
+
+// 处理从好友信息对话框发起聊天
+const handleFriendStartChat = (friend) => {
+  startChat(friend, 'friend');
+};
+
+// 处理从好友信息对话框删除好友
+const handleFriendDelete = async (friendId) => {
+  await deleteFriend(friendId);
+};
+
+// 显示群组信息
+const showGroupInfo = (group) => {
+  selectedGroupId.value = group.id;
+  groupInfoDialogVisible.value = true;
+};
+
+// 处理从群组信息对话框发起私聊
+const handleGroupSendMessage = (member) => {
+  startChat(member, 'friend');
+};
+
+// 处理从群组信息对话框退出群组
+const handleGroupLeave = (groupId) => {
+  leaveGroupConfirm({ id: groupId });
+};
+
+// 退出群组确认
+const leaveGroupConfirm = (group) => {
+  ElMessageBox.confirm(
+    `确定要退出群组 ${group.name || '该群组'} 吗？`,
+    '退出群组',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    ElMessage.info('退出群组功能开发中...');
+    // TODO: 调用API退出群组
+  }).catch(() => {});
 };
 
 // 退出登录
@@ -858,9 +982,24 @@ const logout = async () => {
   background-color: var(--el-bg-color-overlay);
 }
 
+.clickable-avatar {
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.clickable-avatar:hover {
+  transform: scale(1.05);
+}
+
 .user-info {
   flex: 1;
   margin-left: 12px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.user-info:hover {
+  opacity: 0.8;
 }
 
 .user-info h3 {
@@ -1001,10 +1140,28 @@ const logout = async () => {
   padding: 12px 16px;
   cursor: pointer;
   transition: background-color 0.3s;
+  position: relative;
 }
 
 .friend-item:hover, .group-item:hover {
   background-color: var(--el-bg-color-page);
+}
+
+.item-more-icon {
+  font-size: 18px;
+  color: var(--el-text-color-secondary);
+  transition: all 0.3s;
+  opacity: 0;
+}
+
+.friend-item:hover .item-more-icon,
+.group-item:hover .item-more-icon {
+  opacity: 1;
+}
+
+.item-more-icon:hover {
+  color: var(--el-color-primary);
+  transform: scale(1.1);
 }
 
 .friend-info, .group-info, .user-info {

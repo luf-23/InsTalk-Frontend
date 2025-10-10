@@ -90,9 +90,11 @@ const handleLogin = async () => {
     const userInfo = {
       id: result.id,
       username: result.username,
+      nickname: result.nickname,
       email: result.email,
       avatar: result.avatar,
-      role: result.role
+      role: result.role,
+      createdAt: result.createdAt
     }
     userInfoStore.setUserInfo(userInfo)
 

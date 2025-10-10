@@ -277,7 +277,8 @@
             <el-input
               v-model="messageInput"
               type="textarea"
-              :rows="messageRows"
+              :rows="1"
+              :autosize="{ minRows: 1, maxRows: 1 }"
               resize="none"
               placeholder="输入消息..."
               @keydown.enter.exact.prevent="sendMessage"
@@ -287,19 +288,19 @@
               ref="messageInputRef"
               class="message-textarea"
             />
-            <div class="input-actions">
-              <el-tooltip content="发送消息" placement="top">
-                <el-button
-                  type="primary"
-                  class="send-button"
-                  :disabled="!messageInput.trim()"
-                  @click="sendMessage"
-                  :loading="sendLoading"
-                >
-                  发送
-                </el-button>
-              </el-tooltip>
-            </div>
+          </div>
+          <div class="input-actions">
+            <el-tooltip content="发送消息" placement="top">
+              <el-button
+                type="primary"
+                class="send-button"
+                :disabled="!messageInput.trim()"
+                @click="sendMessage"
+                :loading="sendLoading"
+              >
+                发送
+              </el-button>
+            </el-tooltip>
           </div>
         </div>
       </div>
@@ -1470,16 +1471,22 @@ const getInitials = (name) => {
 /* 输入区域 */
 .input-container {
   position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
 }
 
 .textarea-wrapper {
+  flex: 1;
   display: flex;
   position: relative;
-  border-radius: 18px;
+  border-radius: 24px;
   transition: all 0.3s ease;
   background-color: var(--el-fill-color-light);
-  padding: 0 8px;
+  padding: 0 16px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  height: 48px;
+  align-items: center;
 }
 
 .textarea-wrapper.focused {
@@ -1494,23 +1501,28 @@ const getInitials = (name) => {
 .message-textarea :deep(.el-textarea__inner) {
   border: none;
   background: transparent;
-  padding: 12px;
+  padding: 0;
   font-size: 15px;
   resize: none;
-  max-height: 150px;
+  height: 48px;
+  line-height: 48px;
+  max-height: 48px;
+  min-height: 48px;
   box-shadow: none !important;
+  overflow: hidden;
 }
 
 .input-actions {
   display: flex;
-  align-items: flex-end;
-  padding-bottom: 12px;
+  align-items: center;
+  padding-bottom: 0;
 }
 
 .send-button {
-  font-size: 18px;
-  width: 40px;
-  height: 40px;
+  font-size: 15px;
+  height: 48px;
+  padding: 0 24px;
+  border-radius: 24px;
   transition: all 0.3s ease;
 }
 
