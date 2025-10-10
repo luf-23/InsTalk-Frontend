@@ -15,6 +15,9 @@ export const useUserInfoStore = defineStore(
     
     // 获取用户名
     const username = computed(() => userInfo.value?.username || '');
+
+    // 获取用户昵称
+    const nickname = computed(() => userInfo.value?.nickname || '');
     
     // 获取用户头像
     const avatar = computed(() => userInfo.value?.avatar || '');
@@ -24,7 +27,10 @@ export const useUserInfoStore = defineStore(
 
     // 获取用户角色
     const role = computed(() => userInfo.value?.role || 'user');
-    
+
+    // 获取用户创建时间
+    const createdAt = computed(() => userInfo.value?.createdAt || '');
+
     // 设置用户信息
     const setUserInfo = (info) => {
       userInfo.value = info;
@@ -50,10 +56,12 @@ export const useUserInfoStore = defineStore(
       hasUserInfo,
       userId,
       username,
+      nickname,
       avatar,
       email,
       role,
-      
+      createdAt,
+
       // 方法
       setUserInfo,
       updateUserInfo,

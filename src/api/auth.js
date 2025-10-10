@@ -8,6 +8,7 @@ public class LoginVO {
     private String email;
     private String avatar;
     private String role;
+    private LocalDateTime createAt;
     private String accessToken;
     private String refreshToken;
 }
