@@ -232,22 +232,20 @@
         <!-- 工具栏 -->
         <div class="input-toolbar">
           <div class="toolbar-left">
-            <el-tooltip content="表情" placement="top">
-              <el-popover
-                              placement="top"
-                              :width="340"
-                              trigger="click"
-              >
-                <template #reference>
-                  <span class="toolbar-icon emoji-button">😊</span>
-                </template>
-                <div class="emoji-picker">
-                  <div v-for="emoji in emojiList" :key="emoji" class="emoji-item" @click="insertEmoji(emoji)">
-                    {{ emoji }}
-                  </div>
+            <el-popover
+              placement="top"
+              :width="340"
+              trigger="click"
+            >
+              <template #reference>
+                <div class="toolbar-icon emoji-button" title="表情">😊</div>
+              </template>
+              <div class="emoji-picker">
+                <div v-for="emoji in emojiList" :key="emoji" class="emoji-item" @click="insertEmoji(emoji)">
+                  {{ emoji }}
                 </div>
-              </el-popover>
-            </el-tooltip>
+              </div>
+            </el-popover>
             <el-tooltip content="发送图片" placement="top">
               <el-icon class="toolbar-icon" @click="triggerImageUpload"><Picture /></el-icon>
             </el-tooltip>

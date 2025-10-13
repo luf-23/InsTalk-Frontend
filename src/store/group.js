@@ -28,8 +28,6 @@ export const groupStore = defineStore('group', () => {
         try {
             const data = await getGroupListWithMembersService();
             allGroups.value = data || [];
-            console.log('获取到的所有群组:', allGroups.value);
-            console.log('我的群组:', myGroups.value);
         } catch (error) {
             console.error('获取群组列表失败:', error);
             ElMessage.error('获取群组列表失败');
@@ -44,7 +42,6 @@ export const groupStore = defineStore('group', () => {
         try {
             const data = await getMyGroupListWithMembersService();
             myGroups.value = data || [];
-            console.log('获取到的我的群组:', myGroups.value);
         } catch (error) {
             console.error('获取我的群组列表失败:', error);
             ElMessage.error('获取我的群组列表失败');

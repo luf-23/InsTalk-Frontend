@@ -13,6 +13,9 @@ export const getUserInfoService = (params) => {
 };
 
 // 需要修改什么就添加什么
+//示例1：{signature: "新的个性签名", avatar: "新的头像URL"}
+//示例2：{username: "新的用户名"}
+//示例3：{email: "新的邮箱"}
 export const updateUserInfoService = (data) => {
     return request({
         url: '/user/update',
