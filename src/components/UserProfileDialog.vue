@@ -153,6 +153,7 @@ import { useUserInfoStore } from '@/store/userInfo';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
+import { updateUserInfoService } from '@/api/user';
 
 // Props
 const props = defineProps({
@@ -256,9 +257,11 @@ const startEditSignature = () => {
 
 const saveSignature = async () => {
   // 个性签名可以为空
-  // TODO: 调用API保存个性签名
+  userInfoStore.updateUserInfo({
+    signature: editForm.value.signature
+  });
+  await updateUserInfoService({ signature: editForm.value.signature });
   ElMessage.success('个性签名保存成功');
-  userInfoStore.signature = editForm.value.signature;
   editingSignature.value = false;
 };
 
