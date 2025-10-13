@@ -200,16 +200,28 @@
           <div class="settings-section">
             <div class="settings-form">
               <h4>基本设置</h4>
-              <el-form label-position="top">
-                <el-form-item label="群组名称">
-                  <el-input v-model="editForm.name" placeholder="输入新群组名称" />
+              <el-form 
+                ref="editGroupFormRef"
+                :model="editForm"
+                :rules="editGroupRules"
+                label-position="top"
+              >
+                <el-form-item label="群组名称" prop="name">
+                  <el-input 
+                    v-model="editForm.name" 
+                    placeholder="输入新群组名称" 
+                    maxlength="20"
+                    show-word-limit
+                  />
                 </el-form-item>
-                <el-form-item label="群组描述">
+                <el-form-item label="群组描述" prop="description">
                   <el-input 
                     type="textarea" 
                     v-model="editForm.description" 
                     placeholder="输入群组描述" 
-                    :rows="3" 
+                    :rows="3"
+                    maxlength="100"
+                    show-word-limit
                   />
                 </el-form-item>
                 <el-form-item>
@@ -266,7 +278,8 @@ const props = defineProps({
   },
   groupId: {
     type: [String, Number],
-    required: true
+    required: false,
+    default: null
   }
 });
 
@@ -292,10 +305,21 @@ const loadingMessages = ref(false);
 const loadingMedia = ref(false);
 const updatingGroup = ref(false);
 
+const editGroupFormRef = ref(null);
 const editForm = ref({
   name: '',
   description: ''
 });
+
+const editGroupRules = {
+  name: [
+    { required: true, message: '请输入群组名称', trigger: 'blur' },
+    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
+  ],
+  description: [
+    { max: 100, message: '最多100个字符', trigger: 'blur' }
+  ]
+};
 
 // 当前用户ID
 const currentUserId = computed(() => userInfoStore.userId);
@@ -304,7 +328,6 @@ const currentUserId = computed(() => userInfoStore.userId);
 const groupInfo = computed(() => {
   return gStore.allGroups.find(g => g.id === props.groupId);
 });
-
 // 群组成员
 const groupMembers = computed(() => {
   return groupInfo.value?.members || [];
@@ -539,18 +562,21 @@ const viewMedia = (item) => {
   }
 };
 
-const saveGroupSettings = () => {
-  if (!editForm.value.name.trim()) {
-    ElMessage.warning('群组名称不能为空');
-    return;
-  }
-
-  updatingGroup.value = true;
-  setTimeout(() => {
-    ElMessage.success('群组设置保存成功');
-    updatingGroup.value = false;
+const saveGroupSettings = async () => {
+  if (!editGroupFormRef.value) return;
+  
+  try {
+    await editGroupFormRef.value.validate();
+    
+    updatingGroup.value = true;
+    
     // TODO: 调用API保存群组设置
-  }, 1000);
+    ElMessage.success('保存成功');
+    updatingGroup.value = false;
+    
+  } catch (error) {
+    console.error('表单验证失败', error);
+  }
 };
 
 const confirmLeaveGroup = () => {
@@ -591,6 +617,9 @@ watch(visible, (newVal) => {
     memberSearchKeyword.value = '';
     messageSearchKeyword.value = '';
     mediaFilter.value = 'all';
+
+    console.log('🚀 GroupInfoDialog 组件已加载');
+    console.log('🚀 传入的 groupId:', props.groupId);
     
     if (groupInfo.value) {
       editForm.value.name = groupInfo.value.name;

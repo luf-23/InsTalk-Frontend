@@ -162,7 +162,8 @@ const props = defineProps({
   },
   friendId: {
     type: [String, Number],
-    required: true
+    required: false,
+    default: null
   }
 });
 

@@ -44,8 +44,6 @@ request.interceptors.request.use(
     if (authStore.accessToken) {
       config.headers.Authorization = `${authStore.accessToken}`;
     }
-    
-    console.log('请求发送：', config);
     return config;
   },
   (error) => {
@@ -60,8 +58,6 @@ request.interceptors.response.use(
   (response) => {
     // 对响应数据做点什么
     const { data } = response;
-    
-    console.log('响应接收：', data);
     
     // 根据后端返回的Result格式处理
     if (data.code === 0) {
