@@ -11,3 +11,15 @@ export const getUserInfoService = (params) => {
         }
     });
 };
+
+// 需要修改什么就添加什么
+export const updateUserInfoService = (data) => {
+    return request({
+        url: '/user/update',
+        method: 'post',
+        data,
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+};
