@@ -70,7 +70,7 @@
                 class="date-divider"
               >
                 <div class="date-line">
-                  <span class="date-text">{{ formatDate(message.sendAt) }}</span>
+                  <span class="date-text">{{ formatDate(message.sentAt) }}</span>
                 </div>
               </div>
               
@@ -143,7 +143,7 @@
                       
                       <!-- 时间 -->
                       <div class="message-meta">
-                        <span class="message-time">{{ formatTime(message.sendAt) }}</span>
+                        <span class="message-time">{{ formatTime(message.sentAt) }}</span>
                       </div>
                     </div>
                   </div>
@@ -162,7 +162,7 @@
                           <el-icon v-else-if="message.status === 'delivered'" class="status-icon status-delivered"><CircleCheck /></el-icon>
                           <el-icon v-else-if="message.status === 'read'" class="status-icon status-read"><CircleCheck /></el-icon>
                         </span>
-                        <span class="message-time">{{ formatTime(message.sendAt) }}</span>
+                        <span class="message-time">{{ formatTime(message.sentAt) }}</span>
                       </div>
                       
                       <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
@@ -312,167 +312,23 @@
       </el-empty>
     </div>
 
-    <!-- 查看聊天信息的对话框 -->
-    <el-dialog
-      v-model="chatInfoDialogVisible"
-      :title="chatInfoTitle"
-      width="480px"
-      :append-to-body="true"
-      destroy-on-close
-      class="chat-info-dialog"
-    >
-      <div v-if="currentChat" class="chat-info-container">
-        <!-- 好友信息 -->
-        <template v-if="currentChat.type === 'friend'">
-          <div class="chat-info-profile">
-            <el-avatar :size="100" :src="chatAvatar" class="profile-avatar">
-              {{ getInitials(currentChat.name) }}
-            </el-avatar>
-            <div class="profile-status" :class="{ 'online': isUserOnline }"></div>
-            <h2>{{ friendInfo.username }}</h2>
-            <p v-if="friendInfo.signature" class="profile-signature">
-              {{ friendInfo.signature }}
-            </p>
-          </div>
-          
-          <el-tabs>
-            <el-tab-pane label="基本信息">
-              <div class="info-section">
-                <div class="info-item">
-                  <span class="info-label">用户名</span>
-                  <span class="info-value">{{ friendInfo.username }}</span>
-                </div>
-                <div class="info-item">
-                  <span class="info-label">成为好友时间</span>
-                  <span class="info-value">{{ formatDate(friendInfo.createdAt) }}</span>
-                </div>
-              </div>
-              
-              <div class="action-buttons">
-                <el-button type="danger" plain icon="Delete">删除好友</el-button>
-                <el-button type="info" plain icon="MuteNotification">消息免打扰</el-button>
-              </div>
-            </el-tab-pane>
-            <el-tab-pane label="媒体文件">
-              <div class="media-section">
-                <div class="section-title">共享的媒体文件</div>
-                <div class="media-empty">
-                  <el-icon><Picture /></el-icon>
-                  <span>暂无共享媒体文件</span>
-                </div>
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-        </template>
-        
-        <!-- 群组信息 -->
-        <template v-else-if="currentChat.type === 'group'">
-          <div class="chat-info-profile">
-            <el-avatar :size="100" shape="square" :src="chatAvatar" class="profile-avatar">
-              {{ getInitials(currentChat.name) }}
-            </el-avatar>
-            <h2>{{ currentChat.name }}</h2>
-            <div class="group-id">群号：{{ currentChat.id }}</div>
-            <p class="group-description">{{ groupInfo.description || '暂无描述' }}</p>
-            <div class="group-stats">
-              <div class="stat-item">
-                <el-icon><UserFilled /></el-icon>
-                <span>{{ groupMembers.length }}人</span>
-              </div>
-              <div class="stat-item">
-                <el-icon><Calendar /></el-icon>
-                <span>创建于 {{ formatDate(groupInfo.createdAt) }}</span>
-              </div>
-            </div>
-          </div>
-          
-          <el-tabs>
-            <el-tab-pane label="成员">
-              <div class="group-members">
-                <div class="members-header">
-                  <h4>群成员 ({{ groupMembers.length }})</h4>
-                  <el-input
-                    v-model="memberSearchKeyword"
-                    placeholder="搜索成员"
-                    prefix-icon="Search"
-                    clearable
-                    class="member-search"
-                  />
-                </div>
-                
-                <div class="members-list">
-                  <div
-                    v-for="member in filteredGroupMembers"
-                    :key="member.id"
-                    class="member-item"
-                  >
-                    <el-avatar :size="40" :src="member.avatar" class="member-avatar">
-                      {{ getInitials(member.username) }}
-                    </el-avatar>
-                    <div class="member-info">
-                      <div class="member-name">
-                        {{ member.username }}
-                        <el-tag size="small" v-if="isGroupOwner(member.id)" type="danger" class="role-tag">群主</el-tag>
-                        <el-tag size="small" v-else-if="isGroupAdmin(member.id)" type="warning" class="role-tag">管理员</el-tag>
-                      </div>
-                      <div class="member-signature" v-if="member.signature">{{ member.signature }}</div>
-                      <div class="member-status" :class="{ 'online': isUserOnline }">
-                        {{ isUserOnline ? '在线' : '离线' }}
-                      </div>
-                    </div>
-                    <div class="member-actions">
-                      <el-dropdown trigger="click" v-if="isCurrentUserAdmin">
-                        <el-icon class="action-icon"><More /></el-icon>
-                        <template #dropdown>
-                          <el-dropdown-menu>
-                            <el-dropdown-item>私聊</el-dropdown-item>
-                            <el-dropdown-item v-if="isGroupOwner(currentUserId) && !isGroupOwner(member.id)">设为管理员</el-dropdown-item>
-                            <el-dropdown-item v-if="canRemoveMember(member.id)" type="danger">移出群组</el-dropdown-item>
-                          </el-dropdown-menu>
-                        </template>
-                      </el-dropdown>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </el-tab-pane>
-            <el-tab-pane label="媒体文件">
-              <div class="media-section">
-                <div class="section-title">群共享文件</div>
-                <div class="media-empty">
-                  <el-icon><Document /></el-icon>
-                  <span>暂无群共享文件</span>
-                </div>
-              </div>
-            </el-tab-pane>
-            <el-tab-pane label="设置" v-if="isCurrentUserAdmin">
-              <div class="group-settings">
-                <div class="settings-section">
-                  <h4>基本设置</h4>
-                  <el-form label-position="top">
-                    <el-form-item label="群组名称">
-                      <el-input v-model="groupEditName" placeholder="输入新群组名称" />
-                    </el-form-item>
-                    <el-form-item label="群组描述">
-                      <el-input type="textarea" v-model="groupEditDescription" placeholder="输入群组描述" :rows="3" />
-                    </el-form-item>
-                    <el-form-item>
-                      <el-button type="primary" :loading="updatingGroup">保存修改</el-button>
-                    </el-form-item>
-                  </el-form>
-                </div>
-                
-                <div class="danger-zone">
-                  <h4>危险区域</h4>
-                  <el-button type="danger" @click="leaveGroup">退出群组</el-button>
-                  <el-button v-if="isGroupOwner(currentUserId)" type="danger" plain>解散群组</el-button>
-                </div>
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-        </template>
-      </div>
-    </el-dialog>
+    <!-- 好友信息对话框 -->
+    <FriendInfoDialog
+      v-model="friendInfoDialogVisible"
+      :friend-id="currentChat?.type === 'friend' ? currentChat.id : null"
+      @close="friendInfoDialogVisible = false"
+      @startChat="handleStartChat"
+      @delete="handleDeleteFriend"
+    />
+
+    <!-- 群组信息对话框 -->
+    <GroupInfoDialog
+      v-model="groupInfoDialogVisible"
+      :group-id="currentChat?.type === 'group' ? currentChat.id : null"
+      @close="groupInfoDialogVisible = false"
+      @sendMessage="handleSendPrivateMessage"
+      @leave="handleLeaveGroup"
+    />
   </div>
 </template>
 
@@ -482,12 +338,14 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
   ChatDotRound, More, Picture, Document, 
   Folder, FolderOpened, Check, CircleCheck, Loading, Warning, 
-  Search, Download, Calendar, UserFilled, InfoFilled, RemoveFilled
+  Search, Download, InfoFilled, RemoveFilled
 } from '@element-plus/icons-vue';
 import { messageStore } from '@/store/message';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { useUserInfoStore } from '@/store/userInfo';
+import FriendInfoDialog from './FriendInfoDialog.vue';
+import GroupInfoDialog from './GroupInfoDialog.vue';
 
 // Store实例
 const msgStore = messageStore();
@@ -516,13 +374,10 @@ const sendLoading = computed(() => msgStore.loading.send);
 const messageInput = ref('');
 
 // 对话框控制
-const chatInfoDialogVisible = ref(false);
+const friendInfoDialogVisible = ref(false);
+const groupInfoDialogVisible = ref(false);
 const isInputFocused = ref(false);
 const messageInputRef = ref(null);
-const memberSearchKeyword = ref('');
-const groupEditName = ref('');
-const groupEditDescription = ref('');
-const updatingGroup = ref(false);
 
 // 表情选择器数据
 const emojiList = ref(['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤔', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '❤️', '🧡', '💛', '💚', '💙', '💜']);
@@ -564,30 +419,6 @@ const isUserOnline = computed(() => {
   return Math.random() > 0.5;
 });
 
-// 过滤群成员
-const filteredGroupMembers = computed(() => {
-  if (!memberSearchKeyword.value) return groupMembers.value;
-  
-  const keyword = memberSearchKeyword.value.toLowerCase();
-  return groupMembers.value.filter(member => {
-    return (member.username && member.username.toLowerCase().includes(keyword));
-  });
-});
-
-// 判断当前用户是否为管理员
-const isCurrentUserAdmin = computed(() => {
-  if (!currentChat.value || chatType.value !== 'group') return false;
-  
-  const group = gStore.allGroups.find(g => g.id === currentChat.value.id);
-  if (!group) return false;
-  
-  // 群主肯定是管理员
-  if (group.ownerId === currentUserId.value) return true;
-  
-  // 检查是否在管理员列表中
-  return group.admins?.includes(currentUserId.value) || false;
-});
-
 // 获取当前聊天的好友信息
 const friendInfo = computed(() => {
   if (!currentChat.value || chatType.value !== 'friend') return {};
@@ -610,18 +441,6 @@ const groupMembers = computed(() => {
   
   const group = gStore.allGroups.find(g => g.id === currentChat.value.id);
   return group?.members || [];
-});
-
-// 检查用户是否为群主
-const isGroupOwner = (userId) => {
-  return groupInfo.value?.ownerId === userId;
-};
-
-// 对话框标题
-const chatInfoTitle = computed(() => {
-  if (!currentChat.value) return '';
-  
-  return chatType.value === 'friend' ? '好友信息' : '群组信息';
 });
 
 // 监听消息变化，自动滚动到底部
@@ -740,8 +559,8 @@ const formatTime = (timestamp) => {
 const shouldShowDateDivider = (message, index) => {
   if (index === 0) return true;
   
-  const currentDate = new Date(message.sendAt);
-  const prevDate = new Date(messages.value[index - 1].sendAt);
+  const currentDate = new Date(message.sentAt);
+  const prevDate = new Date(messages.value[index - 1].sentAt);
   
   // 确保日期有效
   if (isNaN(currentDate.getTime()) || isNaN(prevDate.getTime())) {
@@ -765,8 +584,8 @@ const isFirstMessageOfGroup = (message, index) => {
   // 不同发送者或时间间隔超过2分钟视为新的一组
   if (prevMessage.senderId !== message.senderId) return true;
   
-  const currentTime = new Date(message.sendAt).getTime();
-  const prevTime = new Date(prevMessage.sendAt).getTime();
+  const currentTime = new Date(message.sentAt).getTime();
+  const prevTime = new Date(prevMessage.sentAt).getTime();
   const timeDiff = currentTime - prevTime;
   
   return timeDiff > 2 * 60 * 1000; // 2分钟
@@ -781,8 +600,8 @@ const isLastMessageOfGroup = (message, index) => {
   // 不同发送者或时间间隔超过2分钟视为新的一组
   if (nextMessage.senderId !== message.senderId) return true;
   
-  const currentTime = new Date(message.sendAt).getTime();
-  const nextTime = new Date(nextMessage.sendAt).getTime();
+  const currentTime = new Date(message.sentAt).getTime();
+  const nextTime = new Date(nextMessage.sentAt).getTime();
   const timeDiff = nextTime - currentTime;
   
   return timeDiff > 2 * 60 * 1000; // 2分钟
@@ -896,24 +715,9 @@ const handleShiftEnter = () => {
 const sendMessage = async () => {
   if (!messageInput.value.trim() || !currentChat.value) return;
   
-  // 模拟消息状态
-  const tempId = `temp-${Date.now()}`;
-  const tempMessage = {
-    id: tempId,
-    content: messageInput.value,
-    senderId: currentUserId.value,
-    sendAt: new Date().toISOString(),
-    messageType: 'TEXT',
-    status: 'sending'
-  };
-  
-  // 添加临时消息到列表
-  msgStore.addTempMessage(tempMessage);
-  
   // 清空输入框
   const content = messageInput.value;
   messageInput.value = '';
-  scrollToBottom();
   
   // 构建消息数据
   const messageData = {
@@ -931,26 +735,12 @@ const sendMessage = async () => {
     const success = await msgStore.sendMessage(messageData);
     
     if (success) {
-      // 更新临时消息状态为已发送
-      msgStore.updateTempMessageStatus(tempId, 'sent');
-      
-      // 模拟消息已送达效果
-      setTimeout(() => {
-        msgStore.updateTempMessageStatus(tempId, 'delivered');
-        
-        // 模拟已读效果
-        setTimeout(() => {
-          msgStore.updateTempMessageStatus(tempId, 'read');
-        }, 3000);
-      }, 1500);
+      // API 已返回 MessageVO 并插入到 store 中,自动滚动到底部
+      scrollToBottom();
     } else {
-      // 更新临时消息状态为发送失败
-      msgStore.updateTempMessageStatus(tempId, 'failed');
       ElMessage.error('消息发送失败');
     }
   } catch (error) {
-    // 更新临时消息状态为发送失败
-    msgStore.updateTempMessageStatus(tempId, 'failed');
     console.error('发送消息出错:', error);
     ElMessage.error('消息发送出错');
   }
@@ -958,23 +748,41 @@ const sendMessage = async () => {
 
 // 显示聊天信息
 const showChatInfo = () => {
-  chatInfoDialogVisible.value = true;
+  if (chatType.value === 'friend') {
+    friendInfoDialogVisible.value = true;
+  } else if (chatType.value === 'group') {
+    groupInfoDialogVisible.value = true;
+  }
 };
 
-// 退出群组
+// 处理好友对话框的事件
+const handleStartChat = (friend) => {
+  // 已经在聊天窗口，不需要额外操作
+  ElMessage.success('当前已在聊天');
+};
+
+const handleDeleteFriend = (friendId) => {
+  ElMessage.info('删除好友功能开发中...');
+  // TODO: 实现删除好友功能
+};
+
+// 处理群组对话框的事件
+const handleSendPrivateMessage = (member) => {
+  ElMessage.info('发送私聊消息功能开发中...');
+  // TODO: 实现发送私聊消息功能
+};
+
+const handleLeaveGroup = (groupId) => {
+  ElMessage.info('退出群组功能开发中...');
+  // TODO: 实现退出群组功能
+};
+
+// 退出群组（从下拉菜单触发）
 const leaveGroup = () => {
-  ElMessageBox.confirm(
-    '确定要退出该群组吗？',
-    '退出群组',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    ElMessage.info('退出群组功能尚未实现');
-    // TODO: 实现退出群组功能
-  }).catch(() => {});
+  if (chatType.value === 'group') {
+    groupInfoDialogVisible.value = true;
+    // 可以在对话框中进行退出操作
+  }
 };
 
 // 获取姓名首字母
@@ -1557,272 +1365,6 @@ const getInitials = (name) => {
   display: flex;
   justify-content: center;
   align-items: center;
-}
-
-/* 聊天信息样式 */
-.chat-info-dialog :deep(.el-dialog__header) {
-  padding: 20px;
-  border-bottom: 1px solid var(--el-border-color-light);
-  margin-right: 0;
-}
-
-.chat-info-container {
-  padding: 0;
-  max-height: 70vh;
-  overflow-y: auto;
-}
-
-.chat-info-profile {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 24px;
-  position: relative;
-  background: linear-gradient(to bottom, var(--el-color-primary-light-9), var(--el-bg-color));
-  border-radius: 0 0 50% 50% / 20px;
-}
-
-.profile-avatar {
-  border: 4px solid white;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.profile-status {
-  position: absolute;
-  bottom: 64px;
-  right: calc(50% - 50px);
-  width: 14px;
-  height: 14px;
-  background-color: var(--el-text-color-disabled);
-  border-radius: 50%;
-  border: 2px solid white;
-}
-
-.profile-status.online {
-  background-color: #10b981;
-}
-
-.chat-info-profile h2 {
-  margin: 16px 0 4px;
-  font-size: 24px;
-  font-weight: 600;
-}
-
-.profile-signature {
-  margin: 8px 0;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  font-style: italic;
-}
-
-.group-id {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-}
-
-.group-description {
-  margin: 12px 0;
-  font-size: 14px;
-  color: var(--el-text-color-regular);
-  text-align: center;
-  max-width: 80%;
-}
-
-.chat-info-dialog :deep(.el-tabs) {
-  --el-tabs-header-height: 50px;
-}
-
-.chat-info-dialog :deep(.el-tabs__nav-wrap) {
-  padding: 0 20px;
-}
-
-.info-section {
-  padding: 20px;
-}
-
-.info-item {
-  margin-bottom: 16px;
-  border-bottom: 1px solid var(--el-border-color-light);
-  padding-bottom: 16px;
-}
-
-.info-item:last-child {
-  border-bottom: none;
-}
-
-.info-label {
-  display: block;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 8px;
-}
-
-.info-value {
-  font-size: 15px;
-  color: var(--el-text-color-primary);
-}
-
-.action-buttons {
-  display: flex;
-  justify-content: space-around;
-  padding: 0 20px 20px;
-  gap: 16px;
-}
-
-.group-stats {
-  display: flex;
-  justify-content: center;
-  gap: 32px;
-  margin-top: 16px;
-}
-
-.stat-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-}
-
-.stat-item .el-icon {
-  font-size: 16px;
-  color: var(--el-color-primary);
-}
-
-.members-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--el-border-color-light);
-}
-
-.members-header h4 {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-}
-
-.member-search {
-  width: 200px;
-}
-
-.members-list {
-  max-height: 300px;
-  overflow-y: auto;
-  padding: 0 20px;
-}
-
-.member-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--el-border-color-extra-light);
-}
-
-.member-item:last-child {
-  border-bottom: none;
-}
-
-.member-avatar {
-  flex-shrink: 0;
-}
-
-.member-info {
-  flex: 1;
-  margin-left: 16px;
-  min-width: 0;
-}
-
-.member-name {
-  display: flex;
-  align-items: center;
-  font-weight: 500;
-  gap: 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.role-tag {
-  flex-shrink: 0;
-}
-
-.member-status {
-  font-size: 12px;
-  color: var(--el-text-color-secondary);
-  margin-top: 4px;
-}
-
-.member-status.online {
-  color: #10b981;
-}
-
-.member-signature {
-  font-size: 11px;
-  color: var(--el-text-color-placeholder);
-  margin-top: 2px;
-  font-style: italic;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.member-actions {
-  margin-left: 16px;
-}
-
-.media-section {
-  padding: 20px;
-  text-align: center;
-}
-
-.section-title {
-  font-size: 16px;
-  font-weight: 500;
-  margin-bottom: 16px;
-}
-
-.media-empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  color: var(--el-text-color-secondary);
-  padding: 40px 0;
-}
-
-.media-empty .el-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: var(--el-text-color-placeholder);
-}
-
-.group-settings {
-  padding: 20px;
-}
-
-.settings-section {
-  margin-bottom: 32px;
-}
-
-.settings-section h4 {
-  margin: 0 0 16px;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--el-text-color-primary);
-}
-
-.danger-zone {
-  padding-top: 16px;
-  border-top: 1px solid var(--el-border-color-light);
-}
-
-.danger-zone h4 {
-  margin: 0 0 16px;
-  font-size: 16px;
-  font-weight: 500;
-  color: var(--el-color-danger);
 }
 
 /* 动画效果 */

@@ -1,5 +1,30 @@
 import request from "@/util/request";
 
+//以下所有GroupVO中的members字段均包含管理员和群主，即所有成员
+
+
+// 创建群组
+/*
+@Data
+public class GroupVO {
+    private Long id;
+    private String name;
+    private String description;
+    private String avatar;
+    private Long ownerId;
+    private LocalDateTime createdAt;
+    private List<Long> adminIds;
+    private List<Member> members;
+    @Data
+    public static class Member{
+        private Long id;
+        private String username;
+        private String signature;
+        private String avatar;
+        private LocalDateTime joinedAt;
+    }
+}
+*/
 export const createGroupService = (data) => {
     return request({
         url: '/group/create',
@@ -12,6 +37,27 @@ export const createGroupService = (data) => {
 };
 
 //params传{groupId:groupId}
+/*
+@Data
+public class GroupVO {
+    private Long id;
+    private String name;
+    private String description;
+    private String avatar;
+    private Long ownerId;
+    private LocalDateTime createdAt;
+    private List<Long> adminIds;
+    private List<Member> members;
+    @Data
+    public static class Member{
+        private Long id;
+        private String username;
+        private String signature;
+        private String avatar;
+        private LocalDateTime joinedAt;
+    }
+}
+*/
 export const joinGroupService = (params) => {
     return request({
         url: '/group/join',
@@ -40,6 +86,7 @@ public class GroupVO {
         private String username;
         private String signature;
         private String avatar;
+        private LocalDateTime joinedAt;
     }
 }
 */
@@ -69,6 +116,7 @@ public class GroupVO {
         private String username;
         private String signature;
         private String avatar;
+        private LocalDateTime joinedAt;
     }
 }
 */

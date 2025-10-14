@@ -69,11 +69,21 @@ export const friendshipStore = defineStore('friendship', () => {
     // 接受好友请求
     const acceptFriendRequest = async (requestId) => {
         try {
-            await acceptFriendRequestService({ id: requestId });
+            // API 返回 FriendVO
+            const friendVO = await acceptFriendRequestService({ id: requestId });
             ElMessage.success('已接受好友请求');
-            // 更新好友申请列表和好友列表
-            await fetchPendingRequests();
-            await fetchFriendList();
+            
+            if (friendVO) {
+                // 直接将返回的好友信息插入到好友列表中
+                friends.value.push(friendVO);
+                
+                // 从待处理列表中移除该请求
+                const index = pendingRequests.value.findIndex(req => req.id === requestId);
+                if (index !== -1) {
+                    pendingRequests.value.splice(index, 1);
+                }
+            }
+            
             return true;
         } catch (error) {
             console.error('接受好友请求失败:', error);
@@ -87,8 +97,13 @@ export const friendshipStore = defineStore('friendship', () => {
         try {
             await rejectFriendRequestService({ id: requestId });
             ElMessage.success('已拒绝好友请求');
-            // 更新好友申请列表
-            await fetchPendingRequests();
+            
+            // 直接从待处理列表中移除该请求
+            const index = pendingRequests.value.findIndex(req => req.id === requestId);
+            if (index !== -1) {
+                pendingRequests.value.splice(index, 1);
+            }
+            
             return true;
         } catch (error) {
             console.error('拒绝好友请求失败:', error);
@@ -102,8 +117,13 @@ export const friendshipStore = defineStore('friendship', () => {
         try {
             await deleteFriendService({ id: friendId });
             ElMessage.success('已删除好友');
-            // 更新好友列表
-            await fetchFriendList();
+            
+            // 直接从好友列表中移除该好友
+            const index = friends.value.findIndex(friend => friend.id === friendId);
+            if (index !== -1) {
+                friends.value.splice(index, 1);
+            }
+            
             return true;
         } catch (error) {
             console.error('删除好友失败:', error);

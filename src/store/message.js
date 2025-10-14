@@ -44,9 +44,12 @@ export const messageStore = defineStore('message', () => {
     const sendMessage = async (messageData) => {
         loading.value.send = true;
         try {
-            await sendMessageService(messageData);
-            // 重新获取消息历史以更新界面
-            await fetchMessageHistory();
+            // API 返回 MessageVO
+            const messageVO = await sendMessageService(messageData);
+            if (messageVO) {
+                // 直接将返回的消息插入到消息列表中
+                messages.value.push(messageVO);
+            }
             return true;
         } catch (error) {
             console.error('发送消息失败:', error);
@@ -77,14 +80,14 @@ export const messageStore = defineStore('message', () => {
                 return message.groupId === currentChat.value.id;
             }
             return false;
-        }).sort((a, b) => getTimeForComparison(a.sendAt) - getTimeForComparison(b.sendAt));
+        }).sort((a, b) => getTimeForComparison(a.sentAt) - getTimeForComparison(b.sentAt));
     });
 
     // 获取聊天列表（最近的对话）
     const getChatList = computed(() => {
             const chatMap = new Map();
             // 先按时间升序排序，保证后面覆盖的是最新的
-            const sortedMessages = [...messages.value].sort((a, b) => getTimeForComparison(a.sendAt) - getTimeForComparison(b.sendAt));
+            const sortedMessages = [...messages.value].sort((a, b) => getTimeForComparison(a.sentAt) - getTimeForComparison(b.sentAt));
             sortedMessages.forEach(message => {
                 let chatKey, chatInfo;
                 if (message.groupId) {
@@ -113,7 +116,7 @@ export const messageStore = defineStore('message', () => {
                 chatMap.set(chatKey, {
                     ...chatInfo,
                     lastMessage: message,
-                    lastMessageTime: message.sendAt
+                    lastMessageTime: message.sentAt
                 });
             });
             return Array.from(chatMap.values()).sort((a, b) =>
@@ -138,22 +141,6 @@ export const messageStore = defineStore('message', () => {
         };
     };
 
-    // 添加临时消息到列表
-    const addTempMessage = (message) => {
-        messages.value.push(message);
-    };
-    
-    // 更新临时消息状态
-    const updateTempMessageStatus = (messageId, status) => {
-        const messageIndex = messages.value.findIndex(m => m.id === messageId);
-        if (messageIndex !== -1) {
-            messages.value[messageIndex] = {
-                ...messages.value[messageIndex],
-                status
-            };
-        }
-    };
-
     return {
         messages,
         currentChat,
@@ -164,8 +151,6 @@ export const messageStore = defineStore('message', () => {
         setCurrentChat,
         getCurrentChatMessages,
         getChatList,
-        clearMessageData,
-        addTempMessage,
-        updateTempMessageStatus
+        clearMessageData
     };
 });

@@ -12,7 +12,17 @@ export const sendFriendRequestService = (params) => {
     });
 }
 
-//同意好友申请
+//接受好友申请
+/*
+@Data
+public class FriendVO {
+    private Long id;
+    private String username;
+    private String signature;
+    private String avatar;
+    private LocalDateTime createdAt;
+}
+*/
 export const acceptFriendRequestService = (params) => {
     return request({
         url: '/friendship/accept',

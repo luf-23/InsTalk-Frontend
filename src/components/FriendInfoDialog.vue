@@ -208,9 +208,9 @@ const messages = computed(() => {
       (msg.senderId === props.friendId || msg.receiverId === props.friendId)
     );
   }).sort((a, b) => {
-    const timeA = new Date(a.sendAt).getTime();
-    const timeB = new Date(b.sendAt).getTime();
-    return timeA - timeB;
+    const timeA = new Date(a.sentAt).getTime();
+    const timeB = new Date(b.sentAt).getTime();
+    return timeB - timeA;
   });
 });
 

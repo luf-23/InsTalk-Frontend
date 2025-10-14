@@ -54,11 +54,16 @@ export const groupStore = defineStore('group', () => {
     const createGroup = async (groupData) => {
         loading.value.create = true;
         try {
-            await createGroupService(groupData);
+            // API 返回 GroupVO
+            const groupVO = await createGroupService(groupData);
             ElMessage.success('群组创建成功');
-            // 更新群组列表
-            await fetchMyGroups();
-            await fetchAllGroups();
+            
+            if (groupVO) {
+                // 直接将返回的群组信息插入到群组列表中
+                allGroups.value.push(groupVO);
+                myGroups.value.push(groupVO);
+            }
+            
             return true;
         } catch (error) {
             console.error('创建群组失败:', error);
@@ -73,12 +78,22 @@ export const groupStore = defineStore('group', () => {
     const joinGroup = async (groupId) => {
         loading.value.join = true;
         try {
-            await joinGroupService({ groupId });
+            // API 返回 GroupVO
+            const groupVO = await joinGroupService({ groupId });
             ElMessage.success('成功加入群组');
-            // 更新群组列表
-            await fetchMyGroups();
-            // 也要更新所有群组列表以刷新按钮状态
-            await fetchAllGroups();
+            
+            if (groupVO) {
+                // 检查该群组是否已经在列表中
+                const existingIndex = allGroups.value.findIndex(g => g.id === groupVO.id);
+                if (existingIndex !== -1) {
+                    // 如果已存在,则更新群组信息(成员列表等)
+                    allGroups.value[existingIndex] = groupVO;
+                } else {
+                    // 如果不存在,则添加到列表中
+                    allGroups.value.push(groupVO);
+                }
+            }
+            
             return true;
         } catch (error) {
             console.error('加入群组失败:', error);
