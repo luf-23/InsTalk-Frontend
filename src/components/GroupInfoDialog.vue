@@ -59,8 +59,13 @@
                     <el-tag size="small" v-else-if="isGroupAdmin(member.id)" type="warning">管理员</el-tag>
                   </div>
                   <div class="member-signature" v-if="member.signature">{{ member.signature }}</div>
-                  <div class="member-status" :class="{ 'online': isUserOnline(member.id) }">
-                    {{ isUserOnline(member.id) ? '在线' : '离线' }}
+                  <div class="member-meta">
+                    <span class="member-status" :class="{ 'online': isUserOnline(member.id) }">
+                      {{ isUserOnline(member.id) ? '在线' : '离线' }}
+                    </span>
+                    <span class="member-join-time" v-if="member.joinedAt">
+                      {{ formatJoinTime(member.joinedAt) }}加入
+                    </span>
                   </div>
                 </div>
                 <el-dropdown trigger="click" v-if="canManageMember(member.id)">
@@ -351,9 +356,9 @@ const messages = computed(() => {
     // 过滤出该群组的所有消息
     return msg.groupId === props.groupId;
   }).sort((a, b) => {
-    const timeA = new Date(a.sendAt).getTime();
-    const timeB = new Date(b.sendAt).getTime();
-    return timeA - timeB;
+    const timeA = new Date(a.sentAt).getTime();
+    const timeB = new Date(b.sentAt).getTime();
+    return timeB - timeA;
   });
 });
 
@@ -430,6 +435,31 @@ const formatDateTime = (date) => {
     hour: '2-digit',
     minute: '2-digit'
   });
+};
+
+const formatJoinTime = (date) => {
+  if (!date) return '';
+  const joinDate = new Date(date);
+  const now = new Date();
+  const diffTime = now - joinDate;
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return '今天';
+  } else if (diffDays === 1) {
+    return '昨天';
+  } else if (diffDays < 7) {
+    return `${diffDays}天前`;
+  } else if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `${weeks}周前`;
+  } else if (diffDays < 365) {
+    const months = Math.floor(diffDays / 30);
+    return `${months}个月前`;
+  } else {
+    const years = Math.floor(diffDays / 365);
+    return `${years}年前`;
+  }
 };
 
 const isGroupOwner = (userId) => {
@@ -617,10 +647,6 @@ watch(visible, (newVal) => {
     memberSearchKeyword.value = '';
     messageSearchKeyword.value = '';
     mediaFilter.value = 'all';
-
-    console.log('🚀 GroupInfoDialog 组件已加载');
-    console.log('🚀 传入的 groupId:', props.groupId);
-    
     if (groupInfo.value) {
       editForm.value.name = groupInfo.value.name;
       editForm.value.description = groupInfo.value.description || '';
@@ -751,10 +777,29 @@ watch(visible, (newVal) => {
 .member-status {
   font-size: 12px;
   color: var(--el-text-color-secondary);
+  margin-right: 8px;
 }
 
 .member-status.online {
   color: #10b981;
+}
+
+.member-meta {
+  display: flex;
+  align-items: center;
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.member-join-time {
+  font-size: 12px;
+  color: var(--el-text-color-placeholder);
+}
+
+.member-join-time::before {
+  content: '•';
+  margin: 0 6px;
+  color: var(--el-text-color-placeholder);
 }
 
 .member-signature {

@@ -126,16 +126,16 @@
                 <p v-if="friend.signature">{{ friend.signature }}</p>
               </div>
               <el-dropdown trigger="click" @click.stop>
-                <el-icon class="item-more-icon"><MoreFilled /></el-icon>
+                <el-icon class="item-more-icon" @click.stop><MoreFilled /></el-icon>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item @click.stop="showFriendInfo(friend)">
+                    <el-dropdown-item @click="showFriendInfo(friend)">
                       <el-icon><InfoFilled /></el-icon>查看信息
                     </el-dropdown-item>
-                    <el-dropdown-item @click.stop="startChat(friend, 'friend')">
+                    <el-dropdown-item @click="startChat(friend, 'friend')">
                       <el-icon><ChatDotRound /></el-icon>发送消息
                     </el-dropdown-item>
-                    <el-dropdown-item @click.stop="deleteFriendConfirm(friend)" divided>
+                    <el-dropdown-item @click="deleteFriendConfirm(friend)" divided>
                       <el-icon><Delete /></el-icon>删除好友
                     </el-dropdown-item>
                   </el-dropdown-menu>
@@ -179,13 +179,13 @@
                     <p>{{ group.members.length }}人</p>
                   </div>
                   <el-dropdown trigger="click" @click.stop>
-                    <el-icon class="item-more-icon"><MoreFilled /></el-icon>
+                    <el-icon class="item-more-icon" @click.stop><MoreFilled /></el-icon>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item @click.stop="showGroupInfo(group)">
+                        <el-dropdown-item @click="showGroupInfo(group)">
                           <el-icon><InfoFilled /></el-icon>查看详情
                         </el-dropdown-item>
-                        <el-dropdown-item @click.stop="startChat(group, 'group')">
+                        <el-dropdown-item @click="startChat(group, 'group')">
                           <el-icon><ChatDotRound /></el-icon>进入群聊
                         </el-dropdown-item>
                       </el-dropdown-menu>
@@ -214,13 +214,13 @@
                     <p>{{ group.members.length }}人</p>
                   </div>
                   <el-dropdown trigger="click" @click.stop>
-                    <el-icon class="item-more-icon"><MoreFilled /></el-icon>
+                    <el-icon class="item-more-icon" @click.stop><MoreFilled /></el-icon>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item @click.stop="showGroupInfo(group)">
+                        <el-dropdown-item @click="showGroupInfo(group)">
                           <el-icon><InfoFilled /></el-icon>查看详情
                         </el-dropdown-item>
-                        <el-dropdown-item @click.stop="startChat(group, 'group')">
+                        <el-dropdown-item @click="startChat(group, 'group')">
                           <el-icon><ChatDotRound /></el-icon>进入群聊
                         </el-dropdown-item>
                       </el-dropdown-menu>
@@ -249,16 +249,16 @@
                     <p>{{ group.members.length }}人</p>
                   </div>
                   <el-dropdown trigger="click" @click.stop>
-                    <el-icon class="item-more-icon"><MoreFilled /></el-icon>
+                    <el-icon class="item-more-icon" @click.stop><MoreFilled /></el-icon>
                     <template #dropdown>
                       <el-dropdown-menu>
-                        <el-dropdown-item @click.stop="showGroupInfo(group)">
+                        <el-dropdown-item @click="showGroupInfo(group)">
                           <el-icon><InfoFilled /></el-icon>查看详情
                         </el-dropdown-item>
-                        <el-dropdown-item @click.stop="startChat(group, 'group')">
+                        <el-dropdown-item @click="startChat(group, 'group')">
                           <el-icon><ChatDotRound /></el-icon>进入群聊
                         </el-dropdown-item>
-                        <el-dropdown-item @click.stop="leaveGroupConfirm(group)" divided>
+                        <el-dropdown-item @click="leaveGroupConfirm(group)" divided>
                           <el-icon><RemoveFilled /></el-icon>退出群组
                         </el-dropdown-item>
                       </el-dropdown-menu>
@@ -580,18 +580,6 @@ const createGroupRules = {
   ]
 };
 
-// 生命周期钩子
-onMounted(async () => {
-  // 获取聊天数据
-  await msgStore.fetchMessageHistory();
-  // 获取好友列表
-  await friendStore.fetchFriendList();
-  await friendStore.fetchPendingRequests();
-  // 获取群组列表
-  await gStore.fetchAllGroups();
-  await gStore.fetchMyGroups();
-});
-
 // 监听搜索查询
 watch(searchQuery, (newValue) => {
   // 实现本地搜索逻辑
@@ -738,8 +726,9 @@ const showAddFriend = () => {
 };
 
 // 显示好友申请对话框
-const showPendingRequests = async () => {
-  await friendStore.fetchPendingRequests();
+const showPendingRequests = () => {
+  // accept/reject 方法已经实时更新了 pendingRequests，不需要重新获取
+  // 如果需要确保数据最新，可以在页面加载时统一获取一次
   pendingRequestsDialogVisible.value = true;
 };
 
@@ -853,8 +842,8 @@ const searchGroups = async () => {
 const joinGroup = async (groupId) => {
   const success = await gStore.joinGroup(groupId);
   if (success) {
-    // 重新加载群组列表
-    await gStore.fetchAllGroups();
+    // joinGroup 方法已经更新了 store 中的群组列表,不需要重新加载
+    ElMessage.success('已成功加入群组');
   }
 };
 
