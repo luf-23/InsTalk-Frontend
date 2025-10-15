@@ -60,6 +60,18 @@ export const logoutService = () => {
     });
 };
 
+// 刷新token
+export const refreshTokenService = (data) => {
+    return request({
+        url: '/auth/refresh',
+        method: 'post',
+        data,
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+};
+
 
 // 修改密码
 export const changePasswordService = (data) => {

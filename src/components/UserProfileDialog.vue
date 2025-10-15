@@ -154,6 +154,8 @@ import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
 import { updateUserInfoService } from '@/api/user';
+import { ossClient } from '@/util/oss';
+
 
 // Props
 const props = defineProps({
@@ -228,7 +230,7 @@ const triggerAvatarUpload = () => {
   avatarInputRef.value?.click();
 };
 
-const handleAvatarUpload = (event) => {
+const handleAvatarUpload = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
 
@@ -243,9 +245,21 @@ const handleAvatarUpload = (event) => {
     ElMessage.error('图片大小不能超过5MB');
     return;
   }
+  const extension = file.name.split('.').pop();
+  await ossClient.init();
+  const fileName = ossClient.generateFileName(extension);
+  const url = ossClient.generateFileUrl(fileName);
+  ossClient.uploadFile(fileName,file).then(async () => {
+    // 更新用户头像
+    userInfoStore.updateUserInfo({ avatar: url });
+    await updateUserInfoService({ avatar: url });
+    ElMessage.success('头像上传成功');
+  }).catch(() => {
+    ElMessage.error('头像上传失败，请稍后重试');
+  });
 
-  // TODO: 实现头像上传逻辑
-  ElMessage.info('头像上传功能开发中...');
+
+
   event.target.value = '';
 };
 
