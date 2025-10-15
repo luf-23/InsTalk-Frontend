@@ -211,6 +211,30 @@
                 :rules="editGroupRules"
                 label-position="top"
               >
+                <el-form-item label="群组头像" prop="avatar">
+                  <div class="avatar-upload-container">
+                    <el-avatar 
+                      :size="80" 
+                      shape="square" 
+                      :src="editForm.avatar || groupInfo.avatar"
+                      class="avatar-preview"
+                    >
+                      {{ getInitials(editForm.name || groupInfo.name) }}
+                    </el-avatar>
+                    <el-upload
+                      :show-file-list="false"
+                      :before-upload="beforeAvatarUpload"
+                      :http-request="handleAvatarUpload"
+                      accept="image/*"
+                      class="avatar-uploader"
+                    >
+                      <el-button size="small" :loading="uploadingAvatar">
+                        <el-icon v-if="!uploadingAvatar"><Upload /></el-icon>
+                        {{ uploadingAvatar ? '上传中...' : '更换头像' }}
+                      </el-button>
+                    </el-upload>
+                  </div>
+                </el-form-item>
                 <el-form-item label="群组名称" prop="name">
                   <el-input 
                     v-model="editForm.name" 
@@ -269,11 +293,13 @@ import { ref, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import {
   UserFilled, Calendar, More, ChatDotRound, Star, Close, Delete,
-  RemoveFilled, Picture, Document, Search
+  RemoveFilled, Picture, Document, Search, Upload
 } from '@element-plus/icons-vue';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
 import { useUserInfoStore } from '@/store/userInfo';
+import { updateGroupInfoService } from '@/api/group';
+import { ossClient } from '@/util/oss';
 
 // Props
 const props = defineProps({
@@ -309,11 +335,13 @@ const mediaFilter = ref('all');
 const loadingMessages = ref(false);
 const loadingMedia = ref(false);
 const updatingGroup = ref(false);
+const uploadingAvatar = ref(false);
 
 const editGroupFormRef = ref(null);
 const editForm = ref({
   name: '',
-  description: ''
+  description: '',
+  avatar: ''
 });
 
 const editGroupRules = {
@@ -592,6 +620,54 @@ const viewMedia = (item) => {
   }
 };
 
+const beforeAvatarUpload = (file) => {
+  const isImage = file.type.startsWith('image/');
+  const isLt5M = file.size / 1024 / 1024 < 5;
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!');
+    return false;
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!');
+    return false;
+  }
+  return true;
+};
+
+const handleAvatarUpload = async (options) => {
+  const { file } = options;
+  
+  uploadingAvatar.value = true;
+  
+  try {
+    // 初始化 OSS 客户端
+    if (!ossClient.client) {
+      await ossClient.init();
+    }
+    
+    // 生成文件名
+    const extension = file.name.split('.').pop();
+    const fileName = ossClient.generateFileName(extension);
+    
+    // 上传文件
+    await ossClient.uploadFile(fileName, file);
+    
+    // 生成文件 URL
+    const avatarUrl = ossClient.generateFileUrl(fileName);
+    
+    // 更新表单中的头像字段
+    editForm.value.avatar = avatarUrl;
+    
+    ElMessage.success('头像上传成功');
+  } catch (error) {
+    console.error('头像上传失败:', error);
+    ElMessage.error('头像上传失败');
+  } finally {
+    uploadingAvatar.value = false;
+  }
+};
+
 const saveGroupSettings = async () => {
   if (!editGroupFormRef.value) return;
   
@@ -600,12 +676,39 @@ const saveGroupSettings = async () => {
     
     updatingGroup.value = true;
     
-    // TODO: 调用API保存群组设置
+    // 构建更新数据对象
+    const updateData = {
+      id: props.groupId
+    };
+    
+    // 只添加修改过的字段
+    if (editForm.value.name !== groupInfo.value.name) {
+      updateData.name = editForm.value.name;
+    }
+    if (editForm.value.description !== groupInfo.value.description) {
+      updateData.description = editForm.value.description;
+    }
+    if (editForm.value.avatar && editForm.value.avatar !== groupInfo.value.avatar) {
+      updateData.avatar = editForm.value.avatar;
+    }
+    
+    // 如果没有任何修改，直接返回
+    if (Object.keys(updateData).length === 1) {
+      ElMessage.info('没有修改任何内容');
+      updatingGroup.value = false;
+      return;
+    }
+    
+    // 调用 store 方法更新群组信息
+    await gStore.updateGroupInfo(updateData);
+    
     ElMessage.success('保存成功');
-    updatingGroup.value = false;
     
   } catch (error) {
-    console.error('表单验证失败', error);
+    console.error('保存群组设置失败:', error);
+    ElMessage.error('保存失败');
+  } finally {
+    updatingGroup.value = false;
   }
 };
 
@@ -650,6 +753,7 @@ watch(visible, (newVal) => {
     if (groupInfo.value) {
       editForm.value.name = groupInfo.value.name;
       editForm.value.description = groupInfo.value.description || '';
+      editForm.value.avatar = groupInfo.value.avatar || '';
     }
   }
 });
@@ -992,6 +1096,21 @@ watch(visible, (newVal) => {
   margin: 0 0 16px;
   font-size: 16px;
   font-weight: 500;
+}
+
+.avatar-upload-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.avatar-preview {
+  border: 2px solid var(--el-border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.avatar-uploader {
+  flex: 1;
 }
 
 .danger-zone {

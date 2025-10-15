@@ -4,7 +4,8 @@ import {
     createGroupService,
     joinGroupService,
     getGroupListWithMembersService,
-    getMyGroupListWithMembersService
+    getMyGroupListWithMembersService,
+    updateGroupInfoService
 } from "@/api/group";
 import { useUserInfoStore } from "@/store/userInfo";
 import { ElMessage } from "element-plus";
@@ -119,6 +120,41 @@ export const groupStore = defineStore('group', () => {
         return false;
     };
 
+    // 更新群组信息
+    const updateGroupInfo = async (updateData) => {
+        try {
+            // 调用 API 更新群组信息
+            await updateGroupInfoService(updateData);
+            
+            // 更新本地 store 中的群组信息
+            const groupId = updateData.id;
+            
+            // 在 allGroups 中查找并更新
+            const groupIndex = allGroups.value.findIndex(g => g.id === groupId);
+            if (groupIndex !== -1) {
+                // 合并更新的字段
+                allGroups.value[groupIndex] = {
+                    ...allGroups.value[groupIndex],
+                    ...updateData
+                };
+            }
+            
+            // 在 myGroups 中查找并更新
+            const myGroupIndex = myGroups.value.findIndex(g => g.id === groupId);
+            if (myGroupIndex !== -1) {
+                myGroups.value[myGroupIndex] = {
+                    ...myGroups.value[myGroupIndex],
+                    ...updateData
+                };
+            }
+            
+            return true;
+        } catch (error) {
+            console.error('更新群组信息失败:', error);
+            throw error;
+        }
+    };
+
     // 清空所有数据（用于退出登录时）
     const clearGroupData = () => {
         allGroups.value = [];
@@ -140,6 +176,7 @@ export const groupStore = defineStore('group', () => {
         createGroup,
         joinGroup,
         isGroupMember,
+        updateGroupInfo,
         clearGroupData
     };
 });

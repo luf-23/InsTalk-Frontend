@@ -381,6 +381,31 @@
         :rules="createGroupRules"
         label-width="80px"
       >
+        <el-form-item label="群组头像" prop="avatar">
+          <div class="avatar-upload-container">
+            <el-avatar 
+              :size="80" 
+              shape="square" 
+              :src="createGroupForm.avatar"
+              class="avatar-preview"
+            >
+              {{ getInitials(createGroupForm.name || '新群组') }}
+            </el-avatar>
+            <el-upload
+              :show-file-list="false"
+              :before-upload="beforeAvatarUpload"
+              :http-request="handleAvatarUpload"
+              accept="image/*"
+              class="avatar-uploader"
+            >
+              <el-button size="small" :loading="uploadingAvatar">
+                <el-icon v-if="!uploadingAvatar"><Upload /></el-icon>
+                {{ uploadingAvatar ? '上传中...' : '上传头像' }}
+              </el-button>
+            </el-upload>
+          </div>
+          <div class="upload-tip">支持 jpg、png 格式，大小不超过 5MB</div>
+        </el-form-item>
         <el-form-item label="群组名称" prop="name">
           <el-input v-model="createGroupForm.name" maxlength="20" show-word-limit />
         </el-form-item>
@@ -480,7 +505,7 @@ import {
   ChatDotRound, UserFilled, Collection, 
   Setting, SwitchButton, Search, Plus, 
   MoreFilled, Delete, Position, Star, Check, More, ArrowDown, ArrowRight,
-  User, InfoFilled, RemoveFilled
+  User, InfoFilled, RemoveFilled, Upload
 } from '@element-plus/icons-vue';
 import UserProfileDialog from './UserProfileDialog.vue';
 import FriendInfoDialog from './FriendInfoDialog.vue';
@@ -492,6 +517,7 @@ import { useAuthStore } from '@/store/auth';
 import { useUserInfoStore } from '@/store/userInfo';
 import { searchGroupByNameService } from '@/api/group';
 import { logoutService } from '@/api/auth';
+import { ossClient } from '@/util/oss';
 
 // 路由和Store初始化
 const router = useRouter();
@@ -568,7 +594,8 @@ const friendSearchQuery = ref('');
 const createGroupFormRef = ref(null);
 const createGroupForm = ref({
   name: '',
-  description: ''
+  description: '',
+  avatar: ''
 });
 const createGroupRules = {
   name: [
@@ -579,6 +606,7 @@ const createGroupRules = {
     { max: 100, message: '最多100个字符', trigger: 'blur' }
   ]
 };
+const uploadingAvatar = ref(false);
 
 // 监听搜索查询
 watch(searchQuery, (newValue) => {
@@ -791,7 +819,8 @@ const deleteFriend = async (friendId) => {
 const showCreateGroup = () => {
   createGroupForm.value = {
     name: '',
-    description: ''
+    description: '',
+    avatar: ''
   };
   createGroupDialogVisible.value = true;
 };
@@ -801,6 +830,56 @@ const showJoinGroup = () => {
   groupSearchQuery.value = '';
   groupSearchResults.value = [];
   joinGroupDialogVisible.value = true;
+};
+
+// 头像上传前验证
+const beforeAvatarUpload = (file) => {
+  const isImage = file.type.startsWith('image/');
+  const isLt5M = file.size / 1024 / 1024 < 5;
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!');
+    return false;
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!');
+    return false;
+  }
+  return true;
+};
+
+// 处理头像上传
+const handleAvatarUpload = async (options) => {
+  const { file } = options;
+  
+  uploadingAvatar.value = true;
+  
+  try {
+    // 初始化 OSS 客户端
+    if (!ossClient.client) {
+      await ossClient.init();
+    }
+    
+    // 生成文件名
+    const extension = file.name.split('.').pop();
+    const fileName = ossClient.generateFileName(extension);
+    
+    // 上传文件
+    await ossClient.uploadFile(fileName, file);
+    
+    // 生成文件 URL
+    const avatarUrl = ossClient.generateFileUrl(fileName);
+    
+    // 更新表单中的头像字段
+    createGroupForm.value.avatar = avatarUrl;
+    
+    ElMessage.success('头像上传成功');
+  } catch (error) {
+    console.error('头像上传失败:', error);
+    ElMessage.error('头像上传失败');
+  } finally {
+    uploadingAvatar.value = false;
+  }
 };
 
 // 创建新群组
@@ -1197,6 +1276,28 @@ const logout = async () => {
 .request-actions {
   display: flex;
   gap: 8px;
+}
+
+/* 头像上传样式 */
+.avatar-upload-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.avatar-preview {
+  border: 2px solid var(--el-border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.avatar-uploader {
+  flex: 1;
+}
+
+.upload-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 
 /* 添加响应式设计 */

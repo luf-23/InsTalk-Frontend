@@ -344,6 +344,7 @@ import { messageStore } from '@/store/message';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { useUserInfoStore } from '@/store/userInfo';
+import { ossClient } from '@/util/oss';
 import FriendInfoDialog from './FriendInfoDialog.vue';
 import GroupInfoDialog from './GroupInfoDialog.vue';
 
@@ -663,14 +664,70 @@ const handleImageUpload = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
   
-  // 这里应该实现图片上传逻辑，然后获取图片URL
-  // 暂时先使用假URL
-  const imageUrl = URL.createObjectURL(file);
+  // 验证文件类型
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件');
+    event.target.value = '';
+    return;
+  }
   
-  ElMessage.warning('图片上传功能尚未完全实现，暂不支持图片发送');
+  // 验证文件大小（限制10MB）
+  if (file.size > 10 * 1024 * 1024) {
+    ElMessage.error('图片大小不能超过10MB');
+    event.target.value = '';
+    return;
+  }
   
-  // 重置文件输入
-  event.target.value = '';
+  try {
+    // 显示上传提示
+    const loadingMsg = ElMessage({
+      message: '图片上传中...',
+      type: 'info',
+      duration: 0
+    });
+    
+    // 初始化 OSS 客户端
+    await ossClient.init();
+    
+    // 生成文件名和URL
+    const extension = file.name.split('.').pop();
+    const fileName = ossClient.generateFileName(extension);
+    const imageUrl = ossClient.generateFileUrl(fileName);
+    
+    // 上传文件到 OSS
+    await ossClient.uploadFile(fileName, file);
+    
+    // 关闭上传提示
+    loadingMsg.close();
+    
+    // 构建图片消息
+    const messageData = {
+      content: imageUrl,
+      messageType: 'IMAGE'
+    };
+    
+    if (chatType.value === 'friend') {
+      messageData.receiverId = currentChat.value.id;
+    } else {
+      messageData.groupId = currentChat.value.id;
+    }
+    
+    // 发送图片消息
+    const success = await msgStore.sendMessage(messageData);
+    
+    if (success) {
+      ElMessage.success('图片发送成功');
+      scrollToBottom();
+    } else {
+      ElMessage.error('图片发送失败');
+    }
+  } catch (error) {
+    console.error('图片上传失败:', error);
+    ElMessage.error('图片上传失败，请稍后重试');
+  } finally {
+    // 重置文件输入
+    event.target.value = '';
+  }
 };
 
 // 处理文件上传
@@ -678,14 +735,63 @@ const handleFileUpload = async (event) => {
   const file = event.target.files[0];
   if (!file) return;
   
-  // 这里应该实现文件上传逻辑，然后获取文件URL
-  // 暂时先使用假URL
-  const fileUrl = URL.createObjectURL(file);
+  // 验证文件大小（限制50MB）
+  if (file.size > 50 * 1024 * 1024) {
+    ElMessage.error('文件大小不能超过50MB');
+    event.target.value = '';
+    return;
+  }
   
-  ElMessage.warning('文件上传功能尚未完全实现，暂不支持文件发送');
-  
-  // 重置文件输入
-  event.target.value = '';
+  try {
+    // 显示上传提示
+    const loadingMsg = ElMessage({
+      message: '文件上传中...',
+      type: 'info',
+      duration: 0
+    });
+    
+    // 初始化 OSS 客户端
+    await ossClient.init();
+    
+    // 生成文件名和URL
+    const extension = file.name.split('.').pop();
+    const fileName = ossClient.generateFileName(extension);
+    const fileUrl = ossClient.generateFileUrl(fileName);
+    
+    // 上传文件到 OSS
+    await ossClient.uploadFile(fileName, file);
+    
+    // 关闭上传提示
+    loadingMsg.close();
+    
+    // 构建文件消息
+    const messageData = {
+      content: fileUrl,
+      messageType: 'FILE'
+    };
+    
+    if (chatType.value === 'friend') {
+      messageData.receiverId = currentChat.value.id;
+    } else {
+      messageData.groupId = currentChat.value.id;
+    }
+    
+    // 发送文件消息
+    const success = await msgStore.sendMessage(messageData);
+    
+    if (success) {
+      ElMessage.success('文件发送成功');
+      scrollToBottom();
+    } else {
+      ElMessage.error('文件发送失败');
+    }
+  } catch (error) {
+    console.error('文件上传失败:', error);
+    ElMessage.error('文件上传失败，请稍后重试');
+  } finally {
+    // 重置文件输入
+    event.target.value = '';
+  }
 };
 
 // 插入表情

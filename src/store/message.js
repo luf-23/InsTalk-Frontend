@@ -49,8 +49,9 @@ export const messageStore = defineStore('message', () => {
             if (messageVO) {
                 // 直接将返回的消息插入到消息列表中
                 messages.value.push(messageVO);
+                return true;
             }
-            return true;
+            return false;
         } catch (error) {
             console.error('发送消息失败:', error);
             ElMessage.error('发送消息失败');

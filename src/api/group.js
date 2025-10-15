@@ -161,3 +161,17 @@ export const searchGroupByNameService = (params) => {
         },
     });
 }
+
+//需要修改什么就添加什么，但是必须添加群id
+//示例1：{id: 1, name: "新的群名称", description: "新的群描述"}
+//示例2：{id: 1, avatar: "新的群头像URL"}
+export const updateGroupInfoService = (data) => {
+    return request({
+        url: '/group/update',
+        method: 'post',
+        data,
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    });
+}

@@ -10,12 +10,6 @@ const request = axios.create({
   timeout: 6000,
 });
 
-// 刷新token的请求（不需要拦截器处理）
-const refreshRequest = axios.create({
-  baseURL,
-  timeout: 6000,
-});
-
 // 是否正在刷新token的标志
 let isRefreshing = false;
 // 失败请求队列
@@ -93,24 +87,25 @@ request.interceptors.response.use(
       isRefreshing = true;
       
       try {
+        // 动态导入 refreshTokenService 避免循环依赖
+        const { refreshTokenService } = await import('@/api/auth.js');
+        
         // 使用refreshToken刷新accessToken
-        const response = await refreshRequest.post('/auth/refresh', {
+        const tokenData = await refreshTokenService({
           refreshToken: authStore.refreshToken
-        }, {
-          headers: {
-            'Content-Type': 'application/json'
-          }
         });
-        const { accessToken, refreshToken } = response.data;
+        
+        // refreshTokenService 已经通过响应拦截器处理，直接返回 data.data
+        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = tokenData;
         
         // 更新tokens
-        authStore.setTokens(accessToken, refreshToken);
+        authStore.setTokens(newAccessToken, newRefreshToken);
         
         // 处理队列中的请求
-        processQueue(null, accessToken);
+        processQueue(null, newAccessToken);
         
-        // 重新发送原始请求
-        originalRequest.headers.Authorization = `${accessToken}`;
+        // 重新发送原始请求，确保使用新的token
+        originalRequest.headers.Authorization = `${newAccessToken}`;
         return request(originalRequest);
         
       } catch (refreshError) {
