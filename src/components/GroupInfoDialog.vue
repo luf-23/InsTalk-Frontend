@@ -170,7 +170,7 @@
                       :src="item.content"
                       fit="cover"
                       class="media-image"
-                      :preview-src-list="imagePreviewList"
+                      @dblclick="openImageViewer(item.content)"
                     >
                       <template #error>
                         <div class="image-error">
@@ -285,6 +285,13 @@
         </el-tab-pane>
       </el-tabs>
     </div>
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-model:visible="imageViewerVisible"
+      :image-list="currentImageList"
+      :initial-index="currentImageIndex"
+    />
   </el-dialog>
 </template>
 
@@ -300,6 +307,7 @@ import { messageStore } from '@/store/message';
 import { useUserInfoStore } from '@/store/userInfo';
 import { updateGroupInfoService } from '@/api/group';
 import { ossClient } from '@/util/oss';
+import ImageViewer from './ImageViewer.vue';
 
 // Props
 const props = defineProps({
@@ -336,6 +344,11 @@ const loadingMessages = ref(false);
 const loadingMedia = ref(false);
 const updatingGroup = ref(false);
 const uploadingAvatar = ref(false);
+
+// 图片查看器
+const imageViewerVisible = ref(false);
+const currentImageList = ref([]);
+const currentImageIndex = ref(0);
 
 const editGroupFormRef = ref(null);
 const editForm = ref({
@@ -617,7 +630,24 @@ const locateMessage = (message) => {
 const viewMedia = (item) => {
   if (item.messageType === 'FILE') {
     window.open(item.content, '_blank');
+  } else if (item.messageType === 'IMAGE') {
+    openImageViewer(item.content);
   }
+};
+
+// 打开图片查看器
+const openImageViewer = (imageUrl) => {
+  // 收集所有图片消息的URL
+  const imageMessages = mediaMessages.value.filter(msg => msg.messageType === 'IMAGE');
+  currentImageList.value = imageMessages.map(msg => msg.content);
+  
+  // 找到当前图片的索引
+  currentImageIndex.value = currentImageList.value.findIndex(url => url === imageUrl);
+  if (currentImageIndex.value === -1) {
+    currentImageIndex.value = 0;
+  }
+  
+  imageViewerVisible.value = true;
 };
 
 const beforeAvatarUpload = (file) => {
@@ -1015,6 +1045,12 @@ watch(visible, (newVal) => {
   width: 100%;
   height: 120px;
   border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.media-image:hover {
+  transform: scale(1.02);
 }
 
 .media-info {
