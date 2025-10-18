@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { ArrowRight, ChatDotRound } from '@element-plus/icons-vue';
 import ChatSidebar from '@/components/ChatSidebar.vue';
@@ -36,21 +36,27 @@ const handleResize = () => {
 onMounted(async () => {
   // 初始化数据
   await Promise.all([
-    msgStore.fetchMessageHistory(),
     friendStore.fetchFriendList(),
     friendStore.fetchPendingRequests(),
     gStore.fetchAllGroups(),
     gStore.fetchMyGroups()
   ]);
 
+  // 智能初始化消息（自动判断是否需要从服务器获取）
+  await msgStore.initMessages();
+
   // 添加窗口大小变化监听
   window.addEventListener('resize', handleResize);
   handleResize();
+});
 
-  // 组件卸载时移除监听器
-  return () => {
-    window.removeEventListener('resize', handleResize);
-  };
+// 组件卸载时清理资源
+onUnmounted(() => {
+  // 停止消息轮询
+  msgStore.stopPolling();
+  
+  // 移除窗口大小变化监听
+  window.removeEventListener('resize', handleResize);
 });
 </script>
 
