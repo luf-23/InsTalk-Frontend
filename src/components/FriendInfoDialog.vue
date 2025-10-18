@@ -117,7 +117,7 @@
                       :src="item.content"
                       fit="cover"
                       class="media-image"
-                      :preview-src-list="imagePreviewList"
+                      @dblclick="openImageViewer(item.content)"
                     >
                       <template #error>
                         <div class="image-error">
@@ -143,6 +143,13 @@
         </el-tab-pane>
       </el-tabs>
     </div>
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-model:visible="imageViewerVisible"
+      :image-list="currentImageList"
+      :initial-index="currentImageIndex"
+    />
   </el-dialog>
 </template>
 
@@ -153,6 +160,7 @@ import { ChatDotRound, Delete, Picture, Document, Search } from '@element-plus/i
 import { friendshipStore } from '@/store/friendship';
 import { messageStore } from '@/store/message';
 import { useUserInfoStore } from '@/store/userInfo';
+import ImageViewer from './ImageViewer.vue';
 
 // Props
 const props = defineProps({
@@ -186,6 +194,11 @@ const messageSearchKeyword = ref('');
 const mediaFilter = ref('all');
 const loadingMessages = ref(false);
 const loadingMedia = ref(false);
+
+// 图片查看器
+const imageViewerVisible = ref(false);
+const currentImageList = ref([]);
+const currentImageIndex = ref(0);
 
 // 好友信息
 const friendInfo = computed(() => {
@@ -326,7 +339,24 @@ const locateMessage = (message) => {
 const viewMedia = (item) => {
   if (item.messageType === 'FILE') {
     window.open(item.content, '_blank');
+  } else if (item.messageType === 'IMAGE') {
+    openImageViewer(item.content);
   }
+};
+
+// 打开图片查看器
+const openImageViewer = (imageUrl) => {
+  // 收集所有图片消息的URL
+  const imageMessages = mediaMessages.value.filter(msg => msg.messageType === 'IMAGE');
+  currentImageList.value = imageMessages.map(msg => msg.content);
+  
+  // 找到当前图片的索引
+  currentImageIndex.value = currentImageList.value.findIndex(url => url === imageUrl);
+  if (currentImageIndex.value === -1) {
+    currentImageIndex.value = 0;
+  }
+  
+  imageViewerVisible.value = true;
 };
 
 // 监听对话框打开，加载数据
@@ -530,6 +560,12 @@ watch(visible, (newVal) => {
   width: 100%;
   height: 100px;
   border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.media-image:hover {
+  transform: scale(1.02);
 }
 
 .image-error {

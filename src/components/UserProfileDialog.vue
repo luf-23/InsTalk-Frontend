@@ -11,7 +11,7 @@
       <!-- 用户头像和基本信息 -->
       <div class="profile-header">
         <div class="avatar-wrapper">
-          <el-avatar :size="100" :src="userInfo.avatar" class="profile-avatar">
+          <el-avatar :size="100" :src="userInfo.avatar" class="profile-avatar" @click="viewAvatar">
             {{ getInitials(userInfo.username) }}
           </el-avatar>
           <el-tooltip content="更换头像" placement="bottom">
@@ -139,6 +139,13 @@
         @change="handleAvatarUpload"
       />
     </div>
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-model:visible="imageViewerVisible"
+      :image-list="[userInfo.avatar]"
+      :initial-index="0"
+    />
   </el-dialog>
 </template>
 
@@ -155,6 +162,7 @@ import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
 import { updateUserInfoService } from '@/api/user';
 import { ossClient } from '@/util/oss';
+import ImageViewer from './ImageViewer.vue';
 
 
 // Props
@@ -183,6 +191,9 @@ const visible = computed({
 const activeTab = ref('basic');
 const editingSignature = ref(false);
 const avatarInputRef = ref(null);
+
+// 图片查看器
+const imageViewerVisible = ref(false);
 
 const editForm = ref({
   signature: ''
@@ -228,6 +239,13 @@ const handleClose = () => {
 // 头像上传
 const triggerAvatarUpload = () => {
   avatarInputRef.value?.click();
+};
+
+// 查看头像大图
+const viewAvatar = () => {
+  if (userInfo.value.avatar) {
+    imageViewerVisible.value = true;
+  }
 };
 
 const handleAvatarUpload = async (event) => {
@@ -317,6 +335,12 @@ const showBindEmail = () => {
 .profile-avatar {
   border: 4px solid white;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+  transition: transform 0.3s ease;
+}
+
+.profile-avatar:hover {
+  transform: scale(1.05);
 }
 
 .avatar-overlay {

@@ -102,10 +102,9 @@
                           <div class="text-message">{{ message.content }}</div>
                         </template>
                         <template v-else-if="message.messageType === 'IMAGE'">
-                          <div class="image-message">
+                          <div class="image-message" @dblclick="openImageViewer(message.content)">
                             <el-image 
                               :src="message.content" 
-                              :preview-src-list="[message.content]"
                               fit="cover"
                               loading="lazy"
                               class="message-image"
@@ -171,10 +170,9 @@
                           <div class="text-message">{{ message.content }}</div>
                         </template>
                         <template v-else-if="message.messageType === 'IMAGE'">
-                          <div class="image-message">
+                          <div class="image-message" @dblclick="openImageViewer(message.content)">
                             <el-image 
                               :src="message.content" 
-                              :preview-src-list="[message.content]"
                               fit="cover"
                               loading="lazy"
                               class="message-image"
@@ -329,6 +327,13 @@
       @sendMessage="handleSendPrivateMessage"
       @leave="handleLeaveGroup"
     />
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-model:visible="imageViewerVisible"
+      :image-list="currentImageList"
+      :initial-index="currentImageIndex"
+    />
   </div>
 </template>
 
@@ -347,6 +352,7 @@ import { useUserInfoStore } from '@/store/userInfo';
 import { ossClient } from '@/util/oss';
 import FriendInfoDialog from './FriendInfoDialog.vue';
 import GroupInfoDialog from './GroupInfoDialog.vue';
+import ImageViewer from './ImageViewer.vue';
 
 // Store实例
 const msgStore = messageStore();
@@ -379,6 +385,11 @@ const friendInfoDialogVisible = ref(false);
 const groupInfoDialogVisible = ref(false);
 const isInputFocused = ref(false);
 const messageInputRef = ref(null);
+
+// 图片查看器
+const imageViewerVisible = ref(false);
+const currentImageList = ref([]);
+const currentImageIndex = ref(0);
 
 // 表情选择器数据
 const emojiList = ref(['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤔', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '❤️', '🧡', '💛', '💚', '💙', '💜']);
@@ -896,6 +907,21 @@ const getInitials = (name) => {
   if (!name) return '?';
   return name.substring(0, 2).toUpperCase();
 };
+
+// 打开图片查看器
+const openImageViewer = (imageUrl) => {
+  // 收集所有图片消息的URL
+  const imageMessages = messages.value.filter(msg => msg.messageType === 'IMAGE');
+  currentImageList.value = imageMessages.map(msg => msg.content);
+  
+  // 找到当前图片的索引
+  currentImageIndex.value = currentImageList.value.findIndex(url => url === imageUrl);
+  if (currentImageIndex.value === -1) {
+    currentImageIndex.value = 0;
+  }
+  
+  imageViewerVisible.value = true;
+};
 </script>
 
 <style scoped>
@@ -1170,6 +1196,30 @@ const getInitials = (name) => {
   border-radius: 4px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  position: relative;
+}
+
+.image-message::after {
+  content: '双击查看';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 2;
+}
+
+.image-message:hover::after {
+  opacity: 1;
 }
 
 .message-image {
