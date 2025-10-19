@@ -2,6 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { sendMessageService, getMessageHistoryService, getNewMessagesService } from "@/api/message";
 import { useUserInfoStore } from "@/store/userInfo";
+import { conversationStore } from "@/store/conversation";
 import { ElMessage } from "element-plus";
 
 // 时间比较辅助函数
@@ -79,6 +80,19 @@ export const messageStore = defineStore('message', () => {
             if (messageVO) {
                 // 直接将返回的消息插入到消息列表中
                 messages.value.push(messageVO);
+                
+                // 创建或更新会话（自己发送的消息，不增加未读数）
+                const convStore = conversationStore();
+                const conversationId = messageVO.groupId || messageVO.receiverId;
+                const conversationType = messageVO.groupId ? 'group' : 'friend';
+                
+                convStore.createOrUpdateConversation({
+                    id: conversationId,
+                    type: conversationType,
+                    lastMessage: messageVO,
+                    isNewMessage: false // 自己发送的消息
+                });
+                
                 return true;
             }
             return false;
@@ -115,6 +129,35 @@ export const messageStore = defineStore('message', () => {
                 
                 // 将新消息添加到消息列表
                 messages.value.push(...uniqueNewMessages);
+                
+                // 为每条新消息创建或更新会话
+                const convStore = conversationStore();
+                const currentUserId = getCurrentUserId();
+                
+                uniqueNewMessages.forEach(message => {
+                    // 判断会话 ID 和类型
+                    let conversationId, conversationType;
+                    
+                    if (message.groupId) {
+                        // 群组消息
+                        conversationId = message.groupId;
+                        conversationType = 'group';
+                    } else {
+                        // 好友消息：找到对方的 ID
+                        conversationId = message.senderId === currentUserId 
+                            ? message.receiverId 
+                            : message.senderId;
+                        conversationType = 'friend';
+                    }
+                    
+                    // 创建或更新会话（新收到的消息）
+                    convStore.createOrUpdateConversation({
+                        id: conversationId,
+                        type: conversationType,
+                        lastMessage: message,
+                        isNewMessage: true // 新收到的消息，会增加未读数
+                    });
+                });
                 
                 // 如果有新消息且不在当前聊天窗口，可以显示提示
                 if (uniqueNewMessages.length > 0) {

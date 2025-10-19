@@ -179,46 +179,74 @@
 /* 响应式调整 */
 @media (max-width: 768px) {
   .particle {
-    animation-duration: 12s;
-  }
-  
-  .wave {
-    animation-duration: 8s;
-  }
-  
-  .grid-overlay {
-    background-size: 30px 30px;
     animation-duration: 15s;
   }
   
+  .particle.large {
+    width: 14px;
+    height: 14px;
+  }
+  
+  .particle.medium {
+    width: 10px;
+    height: 10px;
+  }
+  
+  .wave {
+    animation-duration: 10s;
+  }
+  
+  .wave-container {
+    height: 120px;
+  }
+  
+  .wave {
+    height: 120px;
+  }
+  
+  .grid-overlay {
+    background-size: 25px 25px;
+    animation-duration: 18s;
+  }
+  
   .cursor-glow {
-    width: 100px;
-    height: 100px;
+    width: 80px;
+    height: 80px;
+    display: none; /* 移动端禁用鼠标光晕 */
   }
 }
 
 @media (max-width: 480px) {
   .particle.large {
-    width: 16px;
-    height: 16px;
-  }
-  
-  .particle.medium {
     width: 12px;
     height: 12px;
   }
   
+  .particle.medium {
+    width: 8px;
+    height: 8px;
+  }
+  
   .particle.small {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
   }
   
   .wave-container {
-    height: 100px;
+    height: 80px;
   }
   
   .wave {
-    height: 100px;
+    height: 80px;
+  }
+  
+  .grid-overlay {
+    background-size: 20px 20px;
+  }
+  
+  /* 减少移动端粒子数量以提升性能 */
+  .particle:nth-child(n+8) {
+    display: none;
   }
 }
 

@@ -614,4 +614,47 @@ watch(visible, (newVal) => {
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  /* 使用全局 dialog-mobile.css，这里只保留特定样式 */
+  
+  .profile-status {
+    top: 74px;
+    left: calc(50% + 24px);
+  }
+  
+  .friend-profile h2 {
+    font-size: 20px;
+  }
+  
+  .profile-signature {
+    font-size: 13px;
+  }
+  
+  .info-item {
+    padding: 12px 0;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+  
+  .info-value {
+    text-align: left;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-status {
+    top: 66px;
+    left: calc(50% + 20px);
+  }
+  
+  .friend-profile h2 {
+    font-size: 18px;
+  }
+}
 </style>
+
+

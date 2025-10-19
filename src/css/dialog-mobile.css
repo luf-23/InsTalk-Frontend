@@ -1,0 +1,224 @@
+/* ===========================================
+   Dialog 移动端适配样式
+   统一管理所有对话框的移动端显示
+   =========================================== */
+
+/* 移动端 Dialog 全局优化 */
+@media (max-width: 768px) {
+  /* Dialog 容器 */
+  .el-dialog {
+    width: 95vw !important;
+    max-width: 100vw !important;
+    margin: 5vh auto !important;
+    max-height: 90vh !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  /* Dialog 头部 */
+  .el-dialog__header {
+    padding: 16px !important;
+    margin: 0 !important;
+  }
+  
+  .el-dialog__title {
+    font-size: 18px !important;
+    line-height: 1.4 !important;
+  }
+  
+  .el-dialog__headerbtn {
+    top: 16px !important;
+    right: 16px !important;
+    width: 36px !important;
+    height: 36px !important;
+  }
+  
+  .el-dialog__headerbtn .el-icon {
+    font-size: 20px !important;
+  }
+  
+  /* Dialog 内容区域 */
+  .el-dialog__body {
+    padding: 16px !important;
+    overflow-y: auto !important;
+    flex: 1 !important;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  /* Dialog 底部 */
+  .el-dialog__footer {
+    padding: 12px 16px !important;
+    margin: 0 !important;
+  }
+  
+  .el-dialog__footer .el-button {
+    min-height: 44px !important;
+    padding: 12px 20px !important;
+    font-size: 15px !important;
+  }
+  
+  /* Tabs 优化 */
+  .el-dialog .el-tabs {
+    width: 100% !important;
+  }
+  
+  .el-dialog .el-tabs__header {
+    margin: 0 0 16px 0 !important;
+  }
+  
+  .el-dialog .el-tabs__item {
+    padding: 0 16px !important;
+    height: 44px !important;
+    line-height: 44px !important;
+    font-size: 15px !important;
+  }
+  
+  .el-dialog .el-tabs__content {
+    overflow-y: auto !important;
+  }
+  
+  /* 表单优化 */
+  .el-dialog .el-form-item {
+    margin-bottom: 20px !important;
+  }
+  
+  .el-dialog .el-form-item__label {
+    font-size: 14px !important;
+    line-height: 44px !important;
+  }
+  
+  .el-dialog .el-input__inner,
+  .el-dialog .el-textarea__inner {
+    font-size: 15px !important;
+    min-height: 44px !important;
+  }
+  
+  /* 列表优化 */
+  .el-dialog .el-scrollbar__view {
+    padding: 0 !important;
+  }
+  
+  /* 避免内容被裁剪 */
+  .el-dialog .el-dialog__body > * {
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+}
+
+/* 小屏幕设备额外优化 (≤480px) */
+@media (max-width: 480px) {
+  .el-dialog {
+    width: 100vw !important;
+    margin: 0 !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+  }
+  
+  .el-dialog__header {
+    padding: 12px 16px !important;
+  }
+  
+  .el-dialog__title {
+    font-size: 17px !important;
+  }
+  
+  .el-dialog__body {
+    padding: 12px 16px !important;
+  }
+  
+  .el-dialog__footer {
+    padding: 10px 16px !important;
+  }
+}
+
+/* 横屏模式优化 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .el-dialog {
+    max-height: 95vh !important;
+    margin: 2.5vh auto !important;
+  }
+  
+  .el-dialog__header {
+    padding: 12px 16px !important;
+  }
+  
+  .el-dialog__body {
+    padding: 12px 16px !important;
+  }
+}
+
+/* 特定 Dialog 适配 */
+@media (max-width: 768px) {
+  /* UserProfileDialog */
+  .el-dialog .profile-header {
+    padding: 16px !important;
+  }
+  
+  .el-dialog .profile-avatar {
+    width: 80px !important;
+    height: 80px !important;
+  }
+  
+  .el-dialog .stats-section {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  
+  /* FriendInfoDialog / GroupInfoDialog */
+  .el-dialog .friend-profile,
+  .el-dialog .group-profile {
+    padding: 20px 16px !important;
+  }
+  
+  .el-dialog .members-list,
+  .el-dialog .messages-list {
+    max-height: 40vh !important;
+  }
+  
+  .el-dialog .media-list {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+  }
+  
+  /* 搜索框 */
+  .el-dialog .member-search,
+  .el-dialog .search-form .el-input {
+    width: 100% !important;
+  }
+  
+  /* 头像上传 */
+  .el-dialog .avatar-upload-container {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+  
+  /* 按钮组 */
+  .el-dialog .action-buttons,
+  .el-dialog .request-actions {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+  
+  .el-dialog .action-buttons .el-button,
+  .el-dialog .request-actions .el-button {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+}
+
+/* 小屏幕媒体列表 */
+@media (max-width: 480px) {
+  .el-dialog .media-list {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+  
+  .el-dialog .member-item {
+    padding: 8px 0 !important;
+  }
+  
+  .el-dialog .member-avatar {
+    width: 40px !important;
+    height: 40px !important;
+  }
+}

@@ -516,8 +516,22 @@ const showBindEmail = () => {
 
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .stats-section {
-    grid-template-columns: 1fr;
+  /* 使用全局 dialog-mobile.css，这里只保留特定样式 */
+  
+  .profile-name {
+    font-size: 20px;
+  }
+  
+  .profile-signature {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-avatar {
+    width: 70px;
+    height: 70px;
   }
 }
 </style>
+

@@ -1,0 +1,427 @@
+/* ===========================================
+   移动端响应式样式配置
+   统一管理项目的移动端适配
+   =========================================== */
+
+/* CSS 变量定义 */
+:root {
+  /* 响应式断点 */
+  --breakpoint-mobile: 768px;
+  --breakpoint-small: 480px;
+  
+  /* 移动端间距 */
+  --mobile-padding: 12px;
+  --mobile-margin: 8px;
+  --mobile-gap: 8px;
+  
+  /* 移动端字体大小 */
+  --mobile-font-base: 14px;
+  --mobile-font-small: 12px;
+  --mobile-font-large: 16px;
+  --mobile-font-title: 20px;
+  
+  /* 移动端尺寸 */
+  --mobile-header-height: 56px;
+  --mobile-button-height: 44px;
+  --mobile-input-height: 44px;
+  --mobile-icon-size: 24px;
+  
+  /* 移动端圆角 */
+  --mobile-radius: 8px;
+  --mobile-radius-large: 12px;
+  
+  /* 触摸目标最小尺寸 */
+  --touch-target-min: 44px;
+  
+  /* z-index 层级 */
+  --z-mobile-toggle: 1000;
+  --z-mobile-sidebar: 999;
+  --z-mobile-mask: 998;
+  --z-mobile-content: 900;
+}
+
+/* ===========================================
+   全局移动端优化
+   =========================================== */
+
+/* 防止移动端点击延迟 */
+* {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* 优化触摸滚动 */
+body {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* 禁止文本选择（除了输入框） */
+@media (max-width: 768px) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  
+  input, textarea {
+    -webkit-user-select: auto;
+    user-select: auto;
+  }
+}
+
+/* ===========================================
+   通用移动端样式类
+   =========================================== */
+
+/* 移动端容器 */
+.mobile-container {
+  padding: var(--mobile-padding);
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* 移动端卡片 */
+.mobile-card {
+  border-radius: var(--mobile-radius);
+  padding: var(--mobile-padding);
+  margin: var(--mobile-margin) 0;
+}
+
+/* 移动端按钮 */
+.mobile-button {
+  min-height: var(--mobile-button-height);
+  min-width: var(--touch-target-min);
+  font-size: var(--mobile-font-base);
+  border-radius: var(--mobile-radius);
+  padding: 0 20px;
+}
+
+/* 移动端输入框 */
+.mobile-input {
+  height: var(--mobile-input-height);
+  font-size: var(--mobile-font-base);
+  border-radius: var(--mobile-radius);
+}
+
+/* 移动端标题 */
+.mobile-title {
+  font-size: var(--mobile-font-title);
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+/* 移动端文本 */
+.mobile-text {
+  font-size: var(--mobile-font-base);
+  line-height: 1.5;
+}
+
+/* 移动端小文本 */
+.mobile-text-small {
+  font-size: var(--mobile-font-small);
+  line-height: 1.4;
+}
+
+/* 隐藏桌面端元素 */
+.hide-on-mobile {
+  display: block;
+}
+
+/* 隐藏移动端元素 */
+.hide-on-desktop {
+  display: none;
+}
+
+/* 移动端显示/隐藏 */
+@media (max-width: 768px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+  
+  .hide-on-desktop {
+    display: block !important;
+  }
+}
+
+/* ===========================================
+   移动端遮罩层
+   =========================================== */
+
+.mobile-mask {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  z-index: var(--z-mobile-mask);
+  transition: opacity 0.3s ease;
+}
+
+@media (max-width: 768px) {
+  .mobile-mask.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+  }
+}
+
+/* ===========================================
+   移动端侧边栏通用样式
+   =========================================== */
+
+.mobile-sidebar {
+  position: fixed;
+  top: 0;
+  left: -100%;
+  width: 85%;
+  max-width: 320px;
+  height: 100vh;
+  background-color: #fff;
+  z-index: var(--z-mobile-sidebar);
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.15);
+}
+
+.mobile-sidebar.active {
+  left: 0;
+}
+
+/* ===========================================
+   移动端动画
+   =========================================== */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* ===========================================
+   移动端表单优化
+   =========================================== */
+
+@media (max-width: 768px) {
+  /* Element Plus 输入框优化 */
+  :deep(.el-input) {
+    font-size: var(--mobile-font-base);
+  }
+  
+  :deep(.el-input__inner) {
+    height: var(--mobile-input-height);
+    line-height: var(--mobile-input-height);
+    font-size: var(--mobile-font-base);
+  }
+  
+  :deep(.el-input--large .el-input__inner) {
+    height: var(--mobile-input-height);
+    font-size: var(--mobile-font-base);
+  }
+  
+  /* Element Plus 按钮优化 */
+  :deep(.el-button) {
+    min-height: var(--mobile-button-height);
+    padding: 12px 20px;
+    font-size: var(--mobile-font-base);
+  }
+  
+  :deep(.el-button--large) {
+    min-height: var(--mobile-button-height);
+    padding: 12px 20px;
+    font-size: var(--mobile-font-base);
+  }
+  
+  /* Element Plus 对话框优化 */
+  :deep(.el-dialog) {
+    width: 90% !important;
+    margin: 0 auto;
+    max-width: 420px;
+  }
+  
+  :deep(.el-dialog__header) {
+    padding: var(--mobile-padding);
+  }
+  
+  :deep(.el-dialog__body) {
+    padding: var(--mobile-padding);
+  }
+  
+  /* Element Plus 消息框优化 */
+  :deep(.el-message) {
+    min-width: auto;
+    max-width: calc(100vw - 40px);
+  }
+  
+  /* Element Plus 表单优化 */
+  :deep(.el-form-item__label) {
+    font-size: var(--mobile-font-base);
+  }
+  
+  :deep(.el-form-item__error) {
+    font-size: var(--mobile-font-small);
+  }
+}
+
+/* ===========================================
+   移动端滚动条优化
+   =========================================== */
+
+@media (max-width: 768px) {
+  /* 隐藏滚动条但保持功能 */
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+  
+  /* 或使用更细的滚动条 */
+  .mobile-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+    display: block;
+  }
+  
+  .mobile-scrollbar::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 2px;
+  }
+}
+
+/* ===========================================
+   移动端安全区域适配（iPhone X 等）
+   =========================================== */
+
+@supports (padding: max(0px)) {
+  @media (max-width: 768px) {
+    .mobile-safe-area-top {
+      padding-top: max(12px, env(safe-area-inset-top));
+    }
+    
+    .mobile-safe-area-bottom {
+      padding-bottom: max(12px, env(safe-area-inset-bottom));
+    }
+    
+    .mobile-safe-area-left {
+      padding-left: max(12px, env(safe-area-inset-left));
+    }
+    
+    .mobile-safe-area-right {
+      padding-right: max(12px, env(safe-area-inset-right));
+    }
+  }
+}
+
+/* ===========================================
+   小屏幕设备特殊优化（≤480px）
+   =========================================== */
+
+@media (max-width: 480px) {
+  :root {
+    --mobile-padding: 10px;
+    --mobile-margin: 6px;
+    --mobile-gap: 6px;
+    --mobile-font-base: 13px;
+    --mobile-font-small: 11px;
+    --mobile-font-title: 18px;
+  }
+  
+  .mobile-sidebar {
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  :deep(.el-dialog) {
+    width: 95% !important;
+  }
+}
+
+/* ===========================================
+   横屏模式优化
+   =========================================== */
+
+@media (max-width: 768px) and (orientation: landscape) {
+  .mobile-container {
+    padding: 8px;
+  }
+  
+  :root {
+    --mobile-header-height: 48px;
+    --mobile-button-height: 40px;
+    --mobile-input-height: 40px;
+  }
+}
+
+/* ===========================================
+   触摸反馈优化
+   =========================================== */
+
+@media (max-width: 768px) {
+  .mobile-touchable {
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  
+  .mobile-touchable:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+  
+  /* 按钮触摸反馈 */
+  button, .el-button {
+    transition: all 0.2s ease;
+  }
+  
+  button:active, .el-button:active {
+    transform: scale(0.96);
+  }
+}
+
+/* ===========================================
+   移动端图片优化
+   =========================================== */
+
+@media (max-width: 768px) {
+  img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+  }
+  
+  .mobile-image-cover {
+    object-fit: cover;
+  }
+  
+  .mobile-image-contain {
+    object-fit: contain;
+  }
+}

@@ -777,42 +777,66 @@ onUnmounted(() => {
 /* 响应式设计 */
 @media (max-width: 768px) {
   .image-viewer-toolbar {
-    padding: 0 16px;
+    padding: 0 12px;
+    height: var(--mobile-header-height, 56px);
   }
   
   .toolbar-center {
-    display: none;
+    display: none; /* 移动端隐藏缩放比例显示 */
   }
   
   .toolbar-btn {
-    width: 32px;
-    height: 32px;
-    font-size: 18px;
-  }
-  
-  .navigation-buttons {
-    padding: 0 16px;
-  }
-  
-  .nav-btn {
     width: 40px;
     height: 40px;
     font-size: 20px;
+    min-width: var(--touch-target-min, 44px);
+  }
+  
+  .navigation-buttons {
+    padding: 0 12px;
+  }
+  
+  .nav-btn {
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    background-color: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
   }
   
   .thumbnail-list {
-    bottom: 10px;
+    bottom: 12px;
     padding: 8px 12px;
     gap: 8px;
+    max-width: 90%;
   }
   
   .thumbnail-item {
-    width: 48px;
-    height: 48px;
+    width: 50px;
+    height: 50px;
   }
   
   .viewer-tips {
-    display: none;
+    display: none; /* 移动端隐藏操作提示 */
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbar-btn {
+    width: 36px;
+    height: 36px;
+    font-size: 18px;
+  }
+  
+  .nav-btn {
+    width: 44px;
+    height: 44px;
+    font-size: 22px;
+  }
+  
+  .thumbnail-item {
+    width: 44px;
+    height: 44px;
   }
 }
 

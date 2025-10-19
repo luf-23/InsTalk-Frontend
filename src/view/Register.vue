@@ -421,23 +421,45 @@ onUnmounted(() => {
 }
 
 /* 响应式设计 */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
+  .register-container {
+    padding: 16px;
+  }
+  
   .register-card {
-    margin: 0 16px;
-    padding: 32px 24px;
+    padding: 32px 20px;
+    max-width: 100%;
   }
   
   .register-header h1 {
     font-size: 24px;
   }
   
+  .register-header p {
+    font-size: 13px;
+  }
+  
   .captcha-input-group {
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
   
   .captcha-button {
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .register-card {
+    padding: 28px 16px;
+  }
+  
+  .register-header h1 {
+    font-size: 22px;
+  }
+  
+  .register-button {
+    height: 44px;
   }
 }
 

@@ -78,13 +78,17 @@
             class="chat-item"
             :class="{ active: isChatActive(chat) }"
             @click="selectChat(chat)"
+            @contextmenu.prevent="handleChatContextMenu($event, chat)"
           >
             <el-avatar :size="36" :src="getChatAvatar(chat)" shape="square">
               {{ getChatInitials(chat) }}
             </el-avatar>
             <div class="chat-item-content">
               <div class="chat-item-header">
-                <h4>{{ displayChatName(chat) }}</h4>
+                <div class="chat-item-title">
+                  <el-icon v-if="chat.isPinned" class="pin-icon"><StarFilled /></el-icon>
+                  <h4>{{ displayChatName(chat) }}</h4>
+                </div>
                 <span class="time">{{ formatTime(chat.lastMessageTime) }}</span>
               </div>
               <div class="chat-item-message">
@@ -96,6 +100,14 @@
         </template>
         <el-empty v-else description="暂无聊天记录" />
       </div>
+
+      <!-- 聊天右键菜单 -->
+      <ContextMenu
+        v-model:visible="chatContextMenuVisible"
+        :position="contextMenuPosition"
+        :menu-items="chatMenuItems"
+        @select="handleChatMenuSelect"
+      />
 
       <!-- 好友列表 -->
       <div v-if="activeTab === 'friends'" class="friends-container">
@@ -505,14 +517,16 @@ import {
   ChatDotRound, UserFilled, Collection, 
   Setting, SwitchButton, Search, Plus, 
   MoreFilled, Delete, Position, Star, Check, More, ArrowDown, ArrowRight,
-  User, InfoFilled, RemoveFilled, Upload
+  User, InfoFilled, RemoveFilled, Upload, StarFilled
 } from '@element-plus/icons-vue';
 import UserProfileDialog from './UserProfileDialog.vue';
 import FriendInfoDialog from './FriendInfoDialog.vue';
 import GroupInfoDialog from './GroupInfoDialog.vue';
+import ContextMenu from './ContextMenu.vue';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
+import { conversationStore } from '@/store/conversation';
 import { useAuthStore } from '@/store/auth';
 import { useUserInfoStore } from '@/store/userInfo';
 import { searchGroupByNameService } from '@/api/group';
@@ -524,6 +538,7 @@ const router = useRouter();
 const friendStore = friendshipStore();
 const gStore = groupStore();
 const msgStore = messageStore();
+const convStore = conversationStore();
 const authStore = useAuthStore();
 const userInfoStore = useUserInfoStore();
 
@@ -539,8 +554,21 @@ const activeTab = ref('chats');
 // 搜索查询
 const searchQuery = ref('');
 
-// 聊天相关数据
-const chatList = computed(() => msgStore.getChatList);
+// 聊天相关数据 - 使用会话列表
+const chatList = computed(() => {
+  return convStore.sortedConversations.map(conv => {
+    return {
+      id: conv.id,
+      type: conv.type,
+      name: convStore.getConversationName(conv),
+      avatar: convStore.getConversationAvatar(conv),
+      lastMessage: conv.lastMessage,
+      lastMessageTime: conv.lastMessageTime,
+      unreadCount: conv.unreadCount,
+      isPinned: conv.isPinned
+    };
+  });
+});
 
 // 好友相关数据
 const friends = computed(() => friendStore.friends);
@@ -586,6 +614,31 @@ const groupInfoDialogVisible = ref(false);
 // 选中的好友和群组ID
 const selectedFriendId = ref(null);
 const selectedGroupId = ref(null);
+
+// 右键菜单相关
+const chatContextMenuVisible = ref(false);
+const contextMenuPosition = ref({ x: 0, y: 0 });
+const selectedChatForMenu = ref(null);
+
+// 聊天菜单项
+const chatMenuItems = computed(() => {
+  if (!selectedChatForMenu.value) return [];
+  
+  return [
+    {
+      label: selectedChatForMenu.value.isPinned ? '取消置顶' : '置顶会话',
+      icon: Star,
+      action: 'togglePin'
+    },
+    {
+      label: '删除会话',
+      icon: Delete,
+      action: 'delete',
+      danger: true,
+      divider: true
+    }
+  ];
+});
 
 // 添加好友搜索查询
 const friendSearchQuery = ref('');
@@ -641,30 +694,18 @@ const isChatActive = (chat) => {
 // 根据聊天对象获取展示名称
 const displayChatName = (chat) => {
   if (!chat) return '';
-  if (chat.type === 'friend') {
-    const f = friendStore.friends.find(x => x.id === chat.id);
-    return f ? f.username : (chat.name || `用户 ${chat.id}`);
-  } else {
-    const g = gStore.allGroups.find(x => x.id === chat.id);
-    return g ? g.name : (chat.name || `群组 ${chat.id}`);
-  }
+  return chat.name || (chat.type === 'friend' ? `用户 ${chat.id}` : `群组 ${chat.id}`);
 };
 
 // 获取聊天头像
 const getChatAvatar = (chat) => {
   if (!chat) return '';
-  if (chat.type === 'friend') {
-    const f = friendStore.friends.find(x => x.id === chat.id);
-    return f?.avatar || '';
-  } else {
-    const g = gStore.allGroups.find(x => x.id === chat.id);
-    return g?.avatar || '';
-  }
+  return chat.avatar || '';
 };
 
 // 获取聊天首字母
 const getChatInitials = (chat) => {
-  return getInitials(chat.name);
+  return getInitials(chat.name || '');
 };
 
 // 格式化时间
@@ -727,7 +768,14 @@ const formatLastMessage = (message) => {
 
 // 选择聊天
 const selectChat = (chat) => {
+  // 设置当前聊天
   msgStore.setCurrentChat(chat, chat.type);
+  
+  // 清空该会话的未读数
+  convStore.clearUnreadCount(chat.id, chat.type);
+  
+  // 触发移动端视图切换事件
+  window.dispatchEvent(new CustomEvent('chat-selected'));
 };
 
 // 开始聊天
@@ -739,11 +787,24 @@ const startChat = (target, type) => {
     name: type === 'friend' ? target.username : target.name
   };
   
+  // 创建或更新会话（不是新消息，不增加未读数）
+  convStore.createOrUpdateConversation({
+    id: target.id,
+    type: type,
+    isNewMessage: false
+  });
+  
   // 设置为当前聊天
   msgStore.setCurrentChat(chat, type);
   
+  // 清空未读数
+  convStore.clearUnreadCount(target.id, type);
+  
   // 切换到聊天标签
   activeTab.value = 'chats';
+  
+  // 触发移动端视图切换事件
+  window.dispatchEvent(new CustomEvent('chat-selected'));
 };
 
 // 显示添加好友对话框
@@ -994,6 +1055,33 @@ const leaveGroupConfirm = (group) => {
   }).catch(() => {});
 };
 
+// 置顶/取消置顶会话
+const togglePinChat = (chat) => {
+  convStore.togglePinConversation(chat.id, chat.type);
+};
+
+// 删除会话
+const deleteChat = (chat) => {
+  ElMessageBox.confirm(
+    '删除会话不会删除聊天记录，确定删除吗？',
+    '删除会话',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    convStore.deleteConversation(chat.id, chat.type);
+    
+    // 如果删除的是当前聊天，清空当前聊天
+    if (msgStore.currentChat && 
+        msgStore.currentChat.id === chat.id && 
+        msgStore.chatType === chat.type) {
+      msgStore.setCurrentChat(null, 'friend');
+    }
+  }).catch(() => {});
+};
+
 // 退出登录
 const logout = async () => {
   ElMessageBox.confirm(
@@ -1013,9 +1101,40 @@ const logout = async () => {
       // 无论接口是否成功，都清除本地存储并退出
       authStore.clearAuth();
       userInfoStore.clearUserInfo();
+      msgStore.clearMessageData();
+      friendStore.clearFriendshipData();
+      gStore.clearGroupData();
+      convStore.clearConversationData();
       router.push('/login');
     }
   }).catch(() => {});
+};
+
+// 处理聊天右键菜单
+const handleChatContextMenu = (event, chat) => {
+  event.preventDefault();
+  selectedChatForMenu.value = chat;
+  contextMenuPosition.value = {
+    x: event.clientX,
+    y: event.clientY
+  };
+  chatContextMenuVisible.value = true;
+};
+
+// 处理聊天菜单选择
+const handleChatMenuSelect = (action) => {
+  if (!selectedChatForMenu.value) return;
+  
+  switch (action) {
+    case 'togglePin':
+      togglePinChat(selectedChatForMenu.value);
+      break;
+    case 'delete':
+      deleteChat(selectedChatForMenu.value);
+      break;
+  }
+  
+  selectedChatForMenu.value = null;
 };
 </script>
 
@@ -1039,6 +1158,7 @@ const logout = async () => {
   height: 100%;
   border-right: 1px solid var(--el-border-color-light);
   background-color: var(--el-bg-color);
+  position: relative;
 }
 
 /* 用户信息区域 */
@@ -1161,6 +1281,7 @@ const logout = async () => {
   padding: 12px 16px;
   cursor: pointer;
   transition: background-color 0.3s;
+  position: relative;
 }
 
 .chat-item:hover {
@@ -1169,6 +1290,23 @@ const logout = async () => {
 
 .chat-item.active {
   background-color: var(--el-color-primary-light-9);
+}
+
+.chat-item-more {
+  font-size: 18px;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.3s;
+  margin-left: 8px;
+}
+
+.chat-item:hover .chat-item-more {
+  opacity: 1;
+}
+
+.chat-item-more:hover {
+  color: var(--el-color-primary);
 }
 
 .chat-item-content {
@@ -1181,6 +1319,20 @@ const logout = async () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.chat-item-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.pin-icon {
+  font-size: 14px;
+  color: var(--el-color-warning);
+  flex-shrink: 0;
 }
 
 .chat-item-header h4 {
@@ -1326,16 +1478,63 @@ const logout = async () => {
   color: var(--el-text-color-secondary);
 }
 
-/* 添加响应式设计 */
+/* 响应式设计 */
 @media (max-width: 768px) {
   .chat-sidebar {
     width: 100%;
     border-right: none;
-    border-bottom: 1px solid var(--el-border-color-light);
+  }
+  
+  .sidebar-header {
+    padding: 12px;
+    height: var(--mobile-header-height, 56px);
+  }
+  
+  .sidebar-tabs {
+    padding: 0 8px;
   }
   
   .list-container {
-    max-height: 300px;
+    max-height: calc(100vh - 120px);
+    padding: 0 8px;
+  }
+  
+  .list-item {
+    padding: 10px;
+  }
+  
+  .item-avatar {
+    width: 40px;
+    height: 40px;
+  }
+  
+  .friend-info h4, .group-info h4, .user-info h4 {
+    font-size: 13px;
+  }
+  
+  .friend-info p, .group-info p, .user-info p {
+    font-size: 11px;
+  }
+  
+  /* 对话框使用全局 dialog-mobile.css */
+  
+  .search-results, .pending-requests {
+    max-height: 50vh;
+  }
+}
+
+@media (max-width: 480px) {
+  .sidebar-header h2 {
+    font-size: 18px;
+  }
+  
+  .header-actions {
+    gap: 8px;
+  }
+  
+  .action-button {
+    width: 36px;
+    height: 36px;
   }
 }
 </style>

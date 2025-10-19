@@ -3,6 +3,16 @@
     <div v-if="currentChat" class="chat-window-content">
       <!-- 聊天标题 -->
       <div class="chat-header">
+        <!-- 移动端返回按钮 -->
+        <button 
+          v-if="isMobile && mobileView === 'chat'"
+          class="mobile-back-btn"
+          @click="backToList"
+          aria-label="返回列表"
+        >
+          <el-icon><ArrowLeft /></el-icon>
+        </button>
+        
         <div class="chat-title">
           <div class="title-container">
             <el-avatar :size="36" :src="chatAvatar" class="chat-avatar">
@@ -21,7 +31,7 @@
         </div>
         <div class="chat-actions">
           <el-tooltip content="搜索消息" placement="bottom">
-            <el-icon class="action-icon"><Search /></el-icon>
+            <el-icon class="action-icon" @click="openSearchDialog"><Search /></el-icon>
           </el-tooltip>
           <el-dropdown trigger="click">
             <el-icon class="more-icon"><More /></el-icon>
@@ -57,12 +67,17 @@
             <div
               v-for="(message, index) in messages"
               :key="message.id"
+              :data-message-id="message.id"
               class="message-container"
               :class="{ 
                 'own-message': isOwnMessage(message),
                 'first-of-group': isFirstMessageOfGroup(message, index),
                 'last-of-group': isLastMessageOfGroup(message, index)
               }"
+              @contextmenu.prevent="handleMessageContextMenu($event, message)"
+              @touchstart="handleTouchStart($event, message)"
+              @touchend="handleTouchEnd"
+              @touchmove="handleTouchMove"
             >
               <!-- 显示日期分隔符 -->
               <div 
@@ -334,6 +349,85 @@
       :image-list="currentImageList"
       :initial-index="currentImageIndex"
     />
+
+    <!-- 消息右键菜单 -->
+    <ContextMenu
+      v-model:visible="messageContextMenuVisible"
+      :position="messageContextMenuPosition"
+      :menu-items="messageMenuItems"
+      @select="handleMessageMenuSelect"
+    />
+
+    <!-- 搜索消息对话框 -->
+    <el-dialog
+      v-model="searchDialogVisible"
+      title="搜索消息"
+      width="600px"
+      :close-on-click-modal="false"
+      class="search-dialog"
+    >
+      <div class="search-content">
+        <div class="search-input-wrapper">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="输入关键词搜索消息"
+            clearable
+            @keyup.enter="handleSearch"
+            @clear="clearSearch"
+            class="search-input"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          
+          <el-button type="primary" @click="handleSearch" :loading="searchLoading" class="search-button">
+            搜索
+          </el-button>
+        </div>
+        
+        <el-divider />
+        
+        <div v-loading="searchLoading" class="search-results">
+          <div v-if="searchResults.length === 0 && searchKeyword" class="no-results">
+            <el-empty description="未找到相关消息" />
+          </div>
+          
+          <div v-else-if="searchResults.length === 0" class="search-tips">
+            <el-icon class="tips-icon"><Search /></el-icon>
+            <p>输入关键词搜索聊天消息</p>
+            <ul>
+              <li>支持搜索文本消息内容</li>
+              <li>支持按发送者筛选</li>
+              <li>点击搜索结果可定位到消息</li>
+            </ul>
+          </div>
+          
+          <div v-else class="results-list">
+            <div class="results-count">找到 {{ searchResults.length }} 条相关消息</div>
+            <div
+              v-for="result in searchResults"
+              :key="result.id"
+              class="result-item"
+              @click="scrollToMessage(result)"
+            >
+              <div class="result-header">
+                <el-avatar :size="36" :src="getSenderAvatar(result)">
+                  {{ getSenderInitials(result) }}
+                </el-avatar>
+                <div class="result-info">
+                  <div class="result-sender">{{ getSenderName(result) }}</div>
+                  <div class="result-time">{{ formatFullTime(result.sentAt) }}</div>
+                </div>
+              </div>
+              <div class="result-content">
+                <span v-html="highlightKeyword(result.content)"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -343,9 +437,10 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
   ChatDotRound, More, Picture, Document, 
   Folder, FolderOpened, Check, CircleCheck, Loading, Warning, 
-  Search, Download, InfoFilled, RemoveFilled
+  Search, Download, InfoFilled, RemoveFilled, DocumentCopy, Promotion, RefreshLeft, Delete, ArrowLeft
 } from '@element-plus/icons-vue';
 import { messageStore } from '@/store/message';
+import { conversationStore } from '@/store/conversation';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { useUserInfoStore } from '@/store/userInfo';
@@ -353,9 +448,23 @@ import { ossClient } from '@/util/oss';
 import FriendInfoDialog from './FriendInfoDialog.vue';
 import GroupInfoDialog from './GroupInfoDialog.vue';
 import ImageViewer from './ImageViewer.vue';
+import ContextMenu from './ContextMenu.vue';
+
+// Props
+const props = defineProps({
+  isMobile: {
+    type: Boolean,
+    default: false
+  },
+  mobileView: {
+    type: String,
+    default: 'list'
+  }
+});
 
 // Store实例
 const msgStore = messageStore();
+const convStore = conversationStore();
 const friendStore = friendshipStore();
 const gStore = groupStore();
 const userInfoStore = useUserInfoStore();
@@ -390,6 +499,86 @@ const messageInputRef = ref(null);
 const imageViewerVisible = ref(false);
 const currentImageList = ref([]);
 const currentImageIndex = ref(0);
+
+// 搜索消息相关
+const searchDialogVisible = ref(false);
+const searchKeyword = ref('');
+const searchResults = ref([]);
+const searchLoading = ref(false);
+
+// 消息右键菜单相关
+const messageContextMenuVisible = ref(false);
+const messageContextMenuPosition = ref({ x: 0, y: 0 });
+const selectedMessageForMenu = ref(null);
+
+// 长按相关
+let longPressTimer = null;
+const longPressDuration = 500; // 长按时长（毫秒）
+let touchStartPos = { x: 0, y: 0 };
+const touchMoveThreshold = 10; // 移动阈值（像素）
+
+// 消息菜单项
+const messageMenuItems = computed(() => {
+  if (!selectedMessageForMenu.value) return [];
+  
+  const items = [];
+  const message = selectedMessageForMenu.value;
+  const isOwn = isOwnMessage(message);
+  
+  // 根据消息类型添加对应操作
+  if (message.messageType === 'TEXT') {
+    items.push({
+      label: '复制',
+      icon: DocumentCopy,
+      action: 'copy'
+    });
+  }
+  
+  if (message.messageType === 'IMAGE') {
+    items.push({
+      label: '保存图片',
+      icon: Download,
+      action: 'saveImage'
+    });
+  }
+  
+  if (message.messageType === 'FILE') {
+    items.push({
+      label: '下载文件',
+      icon: Download,
+      action: 'downloadFile'
+    });
+  }
+  
+  // 转发功能（所有消息类型）
+  items.push({
+    label: '转发',
+    icon: Promotion,
+    action: 'forward'
+  });
+  
+  // 自己的消息可以撤回
+  if (isOwn) {
+    items.push({
+      label: '撤回',
+      icon: RefreshLeft,
+      action: 'recall',
+      danger: true,
+      divider: true
+    });
+  }
+  
+  // 删除消息
+  items.push({
+    label: '删除',
+    icon: Delete,
+    action: 'delete',
+    danger: true,
+    divider: !isOwn
+  });
+  
+  return items;
+});
 
 // 表情选择器数据
 const emojiList = ref(['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤔', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾', '❤️', '🧡', '💛', '💚', '💙', '💜']);
@@ -461,14 +650,28 @@ watch(messages, () => {
 }, { deep: true });
 
 // 监听当前聊天变化
-watch(currentChat, () => {
+watch(currentChat, (newChat) => {
   messageInput.value = '';
+  
+  // 清空该会话的未读消息数
+  if (newChat && chatType.value) {
+    convStore.clearUnreadCount(newChat.id, chatType.value);
+  }
+  
   nextTick(scrollToBottom);
 });
 
 // 挂载后初始化
 onMounted(() => {
   scrollToBottom();
+});
+
+// 清理事件监听器
+import { onUnmounted } from 'vue';
+onUnmounted(() => {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+  }
 });
 
 // 自动滚动到底部
@@ -863,6 +1066,123 @@ const sendMessage = async () => {
   }
 };
 
+// 返回列表（移动端）
+const backToList = () => {
+  window.dispatchEvent(new CustomEvent('back-to-list'));
+};
+
+// 打开搜索对话框
+const openSearchDialog = () => {
+  searchDialogVisible.value = true;
+  searchKeyword.value = '';
+  searchResults.value = [];
+};
+
+// 搜索消息
+const handleSearch = () => {
+  if (!searchKeyword.value.trim()) {
+    ElMessage.warning('请输入搜索关键词');
+    return;
+  }
+  
+  searchLoading.value = true;
+  
+  try {
+    // 在当前聊天的消息中搜索
+    const keyword = searchKeyword.value.toLowerCase();
+    searchResults.value = messages.value.filter(message => {
+      // 只搜索文本消息
+      if (message.messageType !== 'TEXT') return false;
+      
+      // 检查消息内容是否包含关键词
+      const content = message.content.toLowerCase();
+      return content.includes(keyword);
+    });
+    
+    if (searchResults.value.length === 0) {
+      ElMessage.info('未找到相关消息');
+    }
+  } catch (error) {
+    console.error('搜索消息出错:', error);
+    ElMessage.error('搜索失败');
+  } finally {
+    searchLoading.value = false;
+  }
+};
+
+// 清空搜索
+const clearSearch = () => {
+  searchKeyword.value = '';
+  searchResults.value = [];
+};
+
+// 高亮关键词
+const highlightKeyword = (content) => {
+  if (!searchKeyword.value || !content) return content;
+  
+  const keyword = searchKeyword.value;
+  const regex = new RegExp(`(${keyword})`, 'gi');
+  return content.replace(regex, '<span class="highlight">$1</span>');
+};
+
+// 滚动到指定消息
+const scrollToMessage = (message) => {
+  searchDialogVisible.value = false;
+  
+  nextTick(() => {
+    // 查找消息元素
+    const messageElements = document.querySelectorAll('.message-container');
+    const targetElement = Array.from(messageElements).find(el => {
+      return el.querySelector(`[data-message-id="${message.id}"]`);
+    });
+    
+    if (targetElement) {
+      // 滚动到目标消息
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      
+      // 高亮显示目标消息
+      targetElement.classList.add('highlight-message');
+      setTimeout(() => {
+        targetElement.classList.remove('highlight-message');
+      }, 2000);
+    } else {
+      ElMessage.warning('消息不在当前可见范围内');
+    }
+  });
+};
+
+// 格式化完整时间（用于搜索结果）
+const formatFullTime = (timestamp) => {
+  if (!timestamp) return '';
+  
+  const date = new Date(timestamp);
+  if (isNaN(date.getTime())) {
+    return timestamp;
+  }
+  
+  const now = new Date();
+  const isToday = date.toDateString() === now.toDateString();
+  const isYesterday = new Date(now - 86400000).toDateString() === date.toDateString();
+  
+  const timeStr = date.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+  
+  if (isToday) {
+    return `今天 ${timeStr}`;
+  } else if (isYesterday) {
+    return `昨天 ${timeStr}`;
+  } else {
+    return date.toLocaleString('zh-CN', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+};
+
 // 显示聊天信息
 const showChatInfo = () => {
   if (chatType.value === 'friend') {
@@ -922,6 +1242,164 @@ const openImageViewer = (imageUrl) => {
   
   imageViewerVisible.value = true;
 };
+
+// 处理消息右键菜单
+const handleMessageContextMenu = (event, message) => {
+  event.preventDefault();
+  selectedMessageForMenu.value = message;
+  messageContextMenuPosition.value = {
+    x: event.clientX,
+    y: event.clientY
+  };
+  messageContextMenuVisible.value = true;
+};
+
+// 处理触摸开始（长按）
+const handleTouchStart = (event, message) => {
+  const touch = event.touches[0];
+  touchStartPos = { x: touch.clientX, y: touch.clientY };
+  
+  longPressTimer = setTimeout(() => {
+    // 触发长按菜单
+    selectedMessageForMenu.value = message;
+    messageContextMenuPosition.value = {
+      x: touch.clientX,
+      y: touch.clientY
+    };
+    messageContextMenuVisible.value = true;
+    
+    // 触发震动反馈（如果设备支持）
+    if (navigator.vibrate) {
+      navigator.vibrate(50);
+    }
+  }, longPressDuration);
+};
+
+// 处理触摸结束
+const handleTouchEnd = () => {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+};
+
+// 处理触摸移动
+const handleTouchMove = (event) => {
+  const touch = event.touches[0];
+  const deltaX = Math.abs(touch.clientX - touchStartPos.x);
+  const deltaY = Math.abs(touch.clientY - touchStartPos.y);
+  
+  // 如果移动距离超过阈值，取消长按
+  if (deltaX > touchMoveThreshold || deltaY > touchMoveThreshold) {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+  }
+};
+
+// 处理消息菜单选择
+const handleMessageMenuSelect = async (action) => {
+  if (!selectedMessageForMenu.value) return;
+  
+  switch (action) {
+    case 'copy':
+      await copyMessageText();
+      break;
+    case 'saveImage':
+      saveImage();
+      break;
+    case 'downloadFile':
+      downloadFile(selectedMessageForMenu.value.content);
+      break;
+    case 'forward':
+      forwardMessage();
+      break;
+    case 'recall':
+      recallMessage();
+      break;
+    case 'delete':
+      deleteMessage();
+      break;
+  }
+  
+  selectedMessageForMenu.value = null;
+};
+
+// 复制消息文本
+const copyMessageText = async () => {
+  if (!selectedMessageForMenu.value || selectedMessageForMenu.value.messageType !== 'TEXT') {
+    return;
+  }
+  
+  try {
+    await navigator.clipboard.writeText(selectedMessageForMenu.value.content);
+    ElMessage.success('已复制到剪贴板');
+  } catch (error) {
+    console.error('复制失败:', error);
+    ElMessage.error('复制失败');
+  }
+};
+
+// 保存图片
+const saveImage = () => {
+  if (!selectedMessageForMenu.value || selectedMessageForMenu.value.messageType !== 'IMAGE') {
+    return;
+  }
+  
+  const imageUrl = selectedMessageForMenu.value.content;
+  const link = document.createElement('a');
+  link.href = imageUrl;
+  link.download = `image_${Date.now()}.jpg`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  ElMessage.success('图片保存成功');
+};
+
+// 转发消息
+const forwardMessage = () => {
+  ElMessage.info('转发功能开发中...');
+};
+
+// 撤回消息
+const recallMessage = () => {
+  if (!selectedMessageForMenu.value) return;
+  
+  ElMessageBox.confirm(
+    '确定要撤回这条消息吗？',
+    '撤回消息',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    ElMessage.info('撤回功能开发中...');
+  }).catch(() => {
+    // 用户取消
+  });
+};
+
+// 删除消息
+const deleteMessage = () => {
+  if (!selectedMessageForMenu.value) return;
+  
+  ElMessageBox.confirm(
+    '确定要删除这条消息吗？',
+    '删除消息',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    ElMessage.info('删除功能开发中...');
+  }).catch(() => {
+    // 用户取消
+  });
+};
 </script>
 
 <style scoped>
@@ -951,6 +1429,37 @@ const openImageViewer = (imageUrl) => {
   background-color: var(--el-bg-color);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   z-index: 10;
+  position: relative;
+}
+
+/* 移动端返回按钮 */
+.mobile-back-btn {
+  display: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: transparent;
+  border: none;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--el-text-color-primary);
+  margin-right: 8px;
+  flex-shrink: 0;
+}
+
+.mobile-back-btn:hover {
+  background-color: var(--el-fill-color-light);
+}
+
+.mobile-back-btn:active {
+  transform: scale(0.95);
+  background-color: var(--el-fill-color);
+}
+
+.mobile-back-btn .el-icon {
+  font-size: 20px;
 }
 
 .chat-title {
@@ -1539,35 +2048,180 @@ const openImageViewer = (imageUrl) => {
   transform: translateY(-10px);
 }
 
+/* 消息长按效果 */
+.message-container {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.message-container.long-press-active {
+  opacity: 0.8;
+  transform: scale(0.98);
+  transition: all 0.1s ease;
+}
+
 /* 响应式设计 */
 @media (max-width: 768px) {
-  .message-content {
-    max-width: calc(100% - 60px);
-  }
-  
-  .image-message {
-    max-width: 200px;
-    max-height: 280px;
-  }
-  
-  .file-name {
-    max-width: 120px;
+  .mobile-back-btn {
+    display: flex;
   }
   
   .chat-header {
-    padding: 10px 12px;
+    padding: 12px;
+    height: var(--mobile-header-height, 56px);
   }
   
-  .chat-input {
-    padding: 10px 12px;
+  .chat-title {
+    flex: 1;
+    min-width: 0;
   }
   
-  .emoji-picker {
-    grid-template-columns: repeat(6, 1fr);
+  .title-container {
+    min-width: 0;
+  }
+  
+  .chat-avatar {
+    width: 36px;
+    height: 36px;
+    margin-right: 10px;
+    flex-shrink: 0;
+  }
+  
+  .title-info {
+    min-width: 0;
+    flex: 1;
+  }
+  
+  .title-info h3 {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  
+  .chat-header h3 {
+    font-size: 16px;
+  }
+  
+  .header-actions {
+    gap: 8px;
+  }
+  
+  .action-button {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .messages-container {
+    padding: 8px;
   }
   
   .message-wrapper {
-    padding: 0 8px;
+    padding: 4px 0;
+  }
+  
+  .message-content {
+    max-width: calc(100% - 60px);
+    font-size: 14px;
+  }
+  
+  .message-bubble {
+    padding: 10px 12px;
+    max-width: 85%;
+  }
+  
+  .image-message {
+    max-width: 180px;
+    max-height: 240px;
+  }
+  
+  .file-message {
+    max-width: 100%;
+  }
+  
+  .file-name {
+    max-width: 140px;
+    font-size: 13px;
+  }
+  
+  .file-size {
+    font-size: 11px;
+  }
+  
+  .chat-input {
+    padding: 10px;
+  }
+  
+  .input-tools {
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  
+  .tool-button {
+    width: 36px;
+    height: 36px;
+  }
+  
+  .input-area {
+    gap: 8px;
+  }
+  
+  :deep(.el-textarea__inner) {
+    font-size: 14px;
+    padding: 10px;
+  }
+  
+  .send-button {
+    height: 44px;
+    padding: 0 20px;
+    font-size: 14px;
+  }
+  
+  /* Emoji 选择器优化 */
+  .emoji-picker {
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    max-height: 200px;
+  }
+  
+  .emoji-item {
+    font-size: 24px;
+    width: 36px;
+    height: 36px;
+  }
+  
+  /* 对话框使用全局 dialog-mobile.css */
+}
+
+@media (max-width: 480px) {
+  .message-bubble {
+    font-size: 13px;
+    padding: 8px 10px;
+  }
+  
+  .image-message {
+    max-width: 150px;
+    max-height: 200px;
+  }
+  
+  .emoji-picker {
+    grid-template-columns: repeat(5, 1fr);
+  }
+  
+  .chat-input {
+    padding: 8px;
+  }
+}
+
+/* 横屏优化 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .messages-container {
+    max-height: calc(100vh - 150px);
+  }
+  
+  .emoji-picker {
+    max-height: 150px;
   }
 }
 
@@ -1600,5 +2254,201 @@ const openImageViewer = (imageUrl) => {
 
 :deep(.dark-mode) .own-message .file-icon .el-icon {
   color: #bfdbfe;
+}
+
+/* 搜索对话框样式 */
+.search-dialog :deep(.el-dialog__body) {
+  padding: 20px;
+}
+
+.search-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.search-input-wrapper {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.search-input {
+  flex: 1;
+  font-size: 15px;
+}
+
+.search-button {
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+.search-results {
+  max-height: 500px;
+  overflow-y: auto;
+  min-height: 300px;
+}
+
+.no-results {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.search-tips {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  color: var(--el-text-color-secondary);
+  text-align: center;
+}
+
+.tips-icon {
+  font-size: 48px;
+  color: var(--el-color-primary-light-5);
+  margin-bottom: 16px;
+}
+
+.search-tips p {
+  font-size: 16px;
+  margin-bottom: 16px;
+  color: var(--el-text-color-primary);
+}
+
+.search-tips ul {
+  text-align: left;
+  list-style: none;
+  padding: 0;
+  font-size: 14px;
+  line-height: 2;
+}
+
+.search-tips li::before {
+  content: "• ";
+  color: var(--el-color-primary);
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+.results-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.results-count {
+  padding: 8px 12px;
+  background-color: var(--el-fill-color-light);
+  border-radius: 4px;
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  text-align: center;
+}
+
+.result-item {
+  padding: 12px;
+  border: 1px solid var(--el-border-color-light);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.result-item:hover {
+  background-color: var(--el-fill-color-light);
+  border-color: var(--el-color-primary-light-7);
+  transform: translateX(4px);
+}
+
+.result-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.result-info {
+  flex: 1;
+  margin-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.result-sender {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+.result-time {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.result-content {
+  padding-left: 48px;
+  font-size: 14px;
+  color: var(--el-text-color-regular);
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.result-content :deep(.highlight) {
+  background-color: #fff59d;
+  color: #000;
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+/* 高亮消息动画 */
+.highlight-message {
+  animation: highlight-pulse 2s ease;
+}
+
+@keyframes highlight-pulse {
+  0%, 100% {
+    background-color: transparent;
+  }
+  50% {
+    background-color: rgba(64, 158, 255, 0.1);
+  }
+}
+
+/* 搜索对话框移动端适配 */
+@media (max-width: 768px) {
+  .search-dialog :deep(.el-dialog) {
+    width: 95vw !important;
+    margin: 0 auto !important;
+  }
+  
+  .search-input-wrapper {
+    gap: 8px;
+  }
+  
+  .search-button {
+    min-width: 70px;
+    padding: 0 16px;
+  }
+  
+  .search-results {
+    max-height: 400px;
+    min-height: 250px;
+  }
+  
+  .search-tips {
+    min-height: 250px;
+  }
+  
+  .result-item {
+    padding: 10px;
+  }
+  
+  .result-content {
+    padding-left: 0;
+    margin-top: 8px;
+  }
 }
 </style>

@@ -1160,4 +1160,61 @@ watch(visible, (newVal) => {
   font-weight: 500;
   color: var(--el-color-danger);
 }
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  /* 使用全局 dialog-mobile.css，这里只保留特定样式 */
+  
+  .group-profile h2 {
+    font-size: 20px;
+  }
+  
+  .group-description {
+    font-size: 13px;
+  }
+  
+  .group-stats {
+    flex-direction: column;
+    gap: 8px;
+  }
+  
+  .members-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 0;
+  }
+  
+  .member-item {
+    padding: 10px 0;
+  }
+  
+  .member-info {
+    margin-left: 12px;
+  }
+  
+  .media-image {
+    height: 100px;
+  }
+}
+
+@media (max-width: 480px) {
+  .group-profile h2 {
+    font-size: 18px;
+  }
+  
+  .members-list {
+    padding: 0 !important;
+  }
+  
+  .member-avatar {
+    width: 36px !important;
+    height: 36px !important;
+  }
+  
+  .media-image {
+    height: 80px;
+  }
+}
 </style>
+
