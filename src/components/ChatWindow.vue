@@ -30,7 +30,7 @@
           </div>
         </div>
         <div class="chat-actions">
-          <el-tooltip content="搜索消息" placement="bottom">
+          <el-tooltip content="搜索消息" placement="bottom" :disabled="isMobile">
             <el-icon class="action-icon" @click="openSearchDialog"><Search /></el-icon>
           </el-tooltip>
           <el-dropdown trigger="click">
@@ -246,9 +246,11 @@
         <div class="input-toolbar">
           <div class="toolbar-left">
             <el-popover
-              placement="top"
-              :width="340"
+              placement="top-start"
+              :width="isMobile ? 'auto' : 340"
               trigger="click"
+              :teleported="true"
+              popper-class="emoji-popover"
             >
               <template #reference>
                 <div class="toolbar-icon emoji-button" title="表情">😊</div>
@@ -259,10 +261,10 @@
                 </div>
               </div>
             </el-popover>
-            <el-tooltip content="发送图片" placement="top">
+            <el-tooltip content="发送图片" placement="top" :disabled="isMobile">
               <el-icon class="toolbar-icon" @click="triggerImageUpload"><Picture /></el-icon>
             </el-tooltip>
-            <el-tooltip content="发送文件" placement="top">
+            <el-tooltip content="发送文件" placement="top" :disabled="isMobile">
               <el-icon class="toolbar-icon" @click="triggerFileUpload"><FolderOpened /></el-icon>
             </el-tooltip>
           </div>
@@ -301,7 +303,7 @@
             />
           </div>
           <div class="input-actions">
-            <el-tooltip content="发送消息" placement="top">
+            <el-tooltip content="发送消息" placement="top" :disabled="isMobile">
               <el-button
                 type="primary"
                 class="send-button"
@@ -1941,6 +1943,9 @@ const deleteMessage = () => {
   justify-content: start;
   box-sizing: border-box;
   width: 100%;
+  max-height: 300px;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .emoji-item {
@@ -1953,11 +1958,21 @@ const deleteMessage = () => {
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.2s;
+  user-select: none;
 }
 
 .emoji-item:hover {
   background-color: var(--el-fill-color-light);
   transform: scale(1.1);
+}
+
+.emoji-item:active {
+  transform: scale(0.95);
+}
+
+/* 表情 Popover 样式 */
+:deep(.emoji-popover) {
+  padding: 4px !important;
 }
 
 /* 输入区域 */
@@ -2207,13 +2222,57 @@ const deleteMessage = () => {
   .emoji-picker {
     grid-template-columns: repeat(6, 1fr);
     gap: 8px;
-    max-height: 200px;
+    max-height: 240px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
+    overscroll-behavior: contain; /* 防止滚动穿透 */
+    padding: 8px 4px;
+    width: 100%;
+    min-width: 280px;
+    max-width: 90vw;
   }
   
   .emoji-item {
     font-size: 24px;
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+  
+  /* 移动端 Popover 优化 - 防止溢出屏幕 */
+  :deep(.emoji-popover.el-popper) {
+    max-width: 90vw !important;
+    max-height: 280px !important;
+    overflow: hidden !important;
+    left: 10px !important; /* 确保不会超出左边界 */
+    right: auto !important;
+  }
+  
+  :deep(.emoji-popover .el-popper__arrow) {
+    display: none !important; /* 移动端隐藏箭头，简化布局 */
+  }
+  
+  /* 确保表情选择器在移动端正确定位 */
+  .input-toolbar {
+    position: relative;
+    z-index: 1;
+  }
+  
+  /* 表情按钮在移动端的调整 */
+  .emoji-button {
+    width: 32px;
+    height: 32px;
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  /* 工具栏左侧按钮布局优化 */
+  .toolbar-left {
+    display: flex;
+    gap: 12px;
+    align-items: center;
   }
   
   /* 对话框使用全局 dialog-mobile.css */
@@ -2277,12 +2336,38 @@ const deleteMessage = () => {
     max-height: 200px;
   }
   
+  /* 小屏幕设备表情选择器进一步优化 */
   .emoji-picker {
     grid-template-columns: repeat(5, 1fr);
+    gap: 6px;
+    padding: 6px 4px;
+    max-height: 200px;
+    min-width: 260px;
+  }
+  
+  .emoji-item {
+    font-size: 22px;
+    width: 36px;
+    height: 36px;
+  }
+  
+  /* 小屏幕 Popover 优化 */
+  :deep(.emoji-popover.el-popper) {
+    max-width: 95vw !important;
+    max-height: 240px !important;
   }
   
   .chat-input {
     padding: 8px;
+  }
+  
+  /* 工具栏按钮间距调整 */
+  .toolbar-left {
+    gap: 8px;
+  }
+  
+  .toolbar-icon {
+    font-size: 16px;
   }
 }
 

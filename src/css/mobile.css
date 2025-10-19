@@ -466,4 +466,60 @@ body {
     position: relative;
     z-index: 10;
   }
+  
+  /* 表情选择器 Popover 移动端优化 */
+  .el-popper.emoji-popover {
+    max-width: 90vw !important;
+    max-height: 280px !important;
+    overflow: hidden !important;
+    margin-bottom: 8px !important;
+  }
+  
+  /* 确保表情选择器不会超出屏幕边界 */
+  .el-popper.emoji-popover[data-popper-placement^="top"] {
+    left: 10px !important;
+    right: auto !important;
+    transform: translateX(0) !important;
+  }
+  
+  /* 表情选择器内部滚动优化 */
+  .emoji-picker {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
+  }
+  
+  /* 表情项的触摸优化 */
+  .emoji-item {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  
+  .emoji-item:active {
+    background-color: var(--el-fill-color) !important;
+    transform: scale(0.9) !important;
+  }
+}
+
+/* 小屏幕设备表情选择器特殊优化 */
+@media (max-width: 480px) {
+  .el-popper.emoji-popover {
+    max-width: 95vw !important;
+    max-height: 240px !important;
+    left: 5px !important;
+  }
+}
+
+/* 横屏模式表情选择器优化 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .el-popper.emoji-popover {
+    max-height: 200px !important;
+  }
+  
+  .emoji-picker {
+    max-height: 180px !important;
+  }
 }

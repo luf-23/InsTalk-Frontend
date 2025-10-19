@@ -4,8 +4,8 @@ import { useAuthStore } from '@/store/auth.js';
 import { useUserInfoStore } from '@/store/userInfo.js';
 
 //const baseURL = "http://localhost:8080/";
-const baseURL = "http://43.142.2.253/api/";
-//const baseURL = "http://192.168.159.105:8080/";
+//const baseURL = "http://43.142.2.253/api/";
+const baseURL = "http://192.168.159.105:8080/";
 const request = axios.create({
   baseURL,
   timeout: 6000,
