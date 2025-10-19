@@ -70,7 +70,8 @@ public class MessageVO {
     //3.groupId群成员有自己且senderId不为自己
 }
 */
-export const getNewMessagesService = (data) => {
+export const getNewMessagesService = (data = {}) => {
+    // 如果未提供 lastMessage，则传空对象，避免将 null 直接发给后端导致解析错误
     return request({
         url: '/message/newMessageList',
         method: 'POST',

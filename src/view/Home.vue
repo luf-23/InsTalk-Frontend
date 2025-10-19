@@ -66,6 +66,12 @@ onMounted(async () => {
   // 从消息同步会话列表（初始化或恢复会话）
   convStore.syncConversationsFromMessages();
 
+  // 启动好友和申请列表轮询（30秒间隔）
+  friendStore.startPolling();
+  
+  // 启动群组列表轮询（30秒间隔）
+  gStore.startPolling();
+
   // 添加窗口大小变化监听
   window.addEventListener('resize', handleResize);
   // 添加移动端事件监听
@@ -76,8 +82,10 @@ onMounted(async () => {
 
 // 组件卸载时清理资源
 onUnmounted(() => {
-  // 停止消息轮询
+  // 停止所有轮询
   msgStore.stopPolling();
+  friendStore.stopPolling();
+  gStore.stopPolling();
   
   // 移除事件监听
   window.removeEventListener('resize', handleResize);
@@ -138,12 +146,19 @@ onUnmounted(() => {
 
 /* 移动端适配 - QQ风格 (≤768px) */
 @media (max-width: 768px) {
+  .home-container {
+    /* 使用 dvh (动态视口高度) 来处理移动端键盘弹出问题 */
+    height: 100dvh;
+    height: 100vh;
+  }
+  
   .sidebar-container {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     z-index: 1;
     border-right: none;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -160,9 +175,11 @@ onUnmounted(() => {
     left: 0;
     width: 100%;
     height: 100vh;
+    height: 100dvh;
     z-index: 0;
     transform: translateX(100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
   }
   
   /* 移动端显示聊天窗口 */

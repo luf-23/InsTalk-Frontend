@@ -22,30 +22,40 @@ export const groupStore = defineStore('group', () => {
         create: false,
         join: false
     });
+    // 轮询定时器
+    let pollingTimer = null;
+    // 轮询间隔（毫秒）- 群组列表变化频率较低，使用 5 秒轮询
+    const pollingInterval = ref(5000); // 5秒轮询一次
+    // 是否启用轮询
+    const pollingEnabled = ref(true);
 
     // 获取所有我已加入的群组列表
-    const fetchAllGroups = async () => {
+    const fetchAllGroups = async (silent = false) => {
         loading.value.allGroups = true;
         try {
             const data = await getGroupListWithMembersService();
             allGroups.value = data || [];
         } catch (error) {
             console.error('获取群组列表失败:', error);
-            ElMessage.error('获取群组列表失败');
+            if (!silent) {
+                ElMessage.error('获取群组列表失败');
+            }
         } finally {
             loading.value.allGroups = false;
         }
     };
 
     // 获取我创建的群组列表
-    const fetchMyGroups = async () => {
+    const fetchMyGroups = async (silent = false) => {
         loading.value.myGroups = true;
         try {
             const data = await getMyGroupListWithMembersService();
             myGroups.value = data || [];
         } catch (error) {
             console.error('获取我的群组列表失败:', error);
-            ElMessage.error('获取我的群组列表失败');
+            if (!silent) {
+                ElMessage.error('获取我的群组列表失败');
+            }
         } finally {
             loading.value.myGroups = false;
         }
@@ -155,8 +165,73 @@ export const groupStore = defineStore('group', () => {
         }
     };
 
+    // 启动轮询
+    const startPolling = () => {
+        // 检查是否启用轮询
+        if (!pollingEnabled.value) {
+            console.log('群组列表轮询已禁用，跳过启动');
+            return;
+        }
+        
+        // 如果已经有定时器在运行，先清除
+        if (pollingTimer) {
+            stopPolling();
+        }
+        
+        console.log('开始轮询群组列表...');
+        
+        // 立即执行一次
+        fetchAllGroups(true);
+        fetchMyGroups(true);
+        
+        // 设置定时器
+        pollingTimer = setInterval(() => {
+            fetchAllGroups(true); // silent 模式，不显示错误提示
+            fetchMyGroups(true);
+        }, pollingInterval.value);
+    };
+
+    // 停止轮询
+    const stopPolling = () => {
+        if (pollingTimer) {
+            console.log('停止轮询群组列表');
+            clearInterval(pollingTimer);
+            pollingTimer = null;
+        }
+    };
+
+    // 设置轮询间隔
+    const setPollingInterval = (interval) => {
+        if (interval < 1000) {
+            console.warn('轮询间隔不能小于1秒');
+            return;
+        }
+        pollingInterval.value = interval;
+        
+        // 如果正在轮询，重启轮询以应用新的间隔
+        if (pollingTimer) {
+            startPolling();
+        }
+    };
+
+    // 启用/禁用轮询
+    const setPollingEnabled = (enabled) => {
+        pollingEnabled.value = enabled;
+        
+        if (enabled) {
+            console.log('群组列表轮询已启用');
+            startPolling();
+        } else {
+            console.log('群组列表轮询已禁用');
+            stopPolling();
+        }
+    };
+
     // 清空所有数据（用于退出登录时）
     const clearGroupData = () => {
+        // 停止轮询
+        stopPolling();
+        
         allGroups.value = [];
         myGroups.value = [];
         loading.value = {
@@ -171,12 +246,18 @@ export const groupStore = defineStore('group', () => {
         allGroups,
         myGroups,
         loading,
+        pollingInterval,
+        pollingEnabled,
         fetchAllGroups,
         fetchMyGroups,
         createGroup,
         joinGroup,
         isGroupMember,
         updateGroupInfo,
-        clearGroupData
+        clearGroupData,
+        startPolling,
+        stopPolling,
+        setPollingInterval,
+        setPollingEnabled
     };
 });

@@ -425,3 +425,45 @@ body {
     object-fit: contain;
   }
 }
+
+/* ===========================================
+   移动端键盘弹出优化
+   =========================================== */
+
+@media (max-width: 768px) {
+  /* 确保输入框容器正确定位 */
+  .chat-input {
+    position: relative;
+    z-index: 100;
+  }
+  
+  /* 当虚拟键盘弹出时，调整视口 */
+  @supports (height: 100dvh) {
+    .chat-window {
+      height: 100dvh;
+    }
+    
+    .chat-window-content {
+      height: 100dvh;
+      max-height: 100dvh;
+    }
+  }
+  
+  /* 防止iOS Safari地址栏影响布局 */
+  @supports (-webkit-touch-callout: none) {
+    .chat-window {
+      height: -webkit-fill-available;
+    }
+  }
+  
+  /* 输入框聚焦时的样式 */
+  .chat-input textarea:focus {
+    outline: none;
+  }
+  
+  /* 确保输入区域不会被键盘遮挡 */
+  .input-container {
+    position: relative;
+    z-index: 10;
+  }
+}

@@ -120,7 +120,8 @@ export const messageStore = defineStore('message', () => {
     const fetchNewMessages = async () => {
         try {
             const lastMessage = getLastMessage();
-            const newMessages = await getNewMessagesService(lastMessage);
+            // 如果没有上一条消息，避免向后端发送 null，传 undefined 让 service 使用默认的空对象 {}
+            const newMessages = await getNewMessagesService(lastMessage ?? undefined);
             
             if (newMessages && newMessages.length > 0) {
                 // 过滤掉已存在的消息（根据消息ID）
