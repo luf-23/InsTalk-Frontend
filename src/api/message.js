@@ -80,3 +80,29 @@ export const getNewMessagesService = (data) => {
         }
     });
 };
+
+
+// 标记消息为已读(params传messageId)
+export const markMessageAsReadService = (params) => {
+    return request({
+        url: '/message/read',
+        method: 'POST',
+        params,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+    });
+};
+
+
+// 批量标记消息为已读(params传messageIds)
+export const markMessageListAsReadService = (params) => {
+    return request({
+        url: '/message/readList',
+        method: 'POST',
+        params,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+    });
+};

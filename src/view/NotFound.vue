@@ -69,6 +69,24 @@ p {
   flex-wrap: wrap;
 }
 
+@media (max-width: 768px) {
+  .not-found-container {
+    padding: 16px;
+  }
+  
+  .error-code {
+    font-size: 100px;
+  }
+  
+  h1 {
+    font-size: 28px;
+  }
+  
+  p {
+    font-size: 15px;
+  }
+}
+
 @media (max-width: 480px) {
   .error-code {
     font-size: 80px;
@@ -78,13 +96,19 @@ p {
     font-size: 24px;
   }
   
+  p {
+    font-size: 14px;
+  }
+  
   .actions {
     flex-direction: column;
     align-items: center;
+    gap: 12px;
   }
   
   .actions .el-button {
     width: 200px;
+    height: var(--mobile-button-height, 44px);
   }
 }
 </style>

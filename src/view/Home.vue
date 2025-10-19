@@ -1,36 +1,54 @@
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { ArrowRight, ChatDotRound } from '@element-plus/icons-vue';
 import ChatSidebar from '@/components/ChatSidebar.vue';
 import ChatWindow from '@/components/ChatWindow.vue';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
+import { conversationStore } from '@/store/conversation';
 
 const router = useRouter();
 const friendStore = friendshipStore();
 const gStore = groupStore();
 const msgStore = messageStore();
-
-// 当前活动面板
-const activeSidebar = ref(true);
-
-// 在移动设备上切换侧边栏
-const toggleSidebar = () => {
-  activeSidebar.value = !activeSidebar.value;
-};
+const convStore = conversationStore();
 
 // 响应式断点
 const isMobile = ref(window.innerWidth < 768);
 
+// 移动端视图状态：'list' 显示列表，'chat' 显示聊天
+const mobileView = ref('list');
+
 // 监听窗口大小变化
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768;
+  // 桌面端始终显示列表
   if (!isMobile.value) {
-    activeSidebar.value = true;
+    mobileView.value = 'list';
   }
 };
+
+// 监听会话选择事件（从 ChatSidebar 触发）
+const handleChatSelected = () => {
+  if (isMobile.value) {
+    mobileView.value = 'chat';
+  }
+};
+
+// 监听返回列表事件（从 ChatWindow 触发）
+const handleBackToList = () => {
+  if (isMobile.value) {
+    mobileView.value = 'list';
+  }
+};
+
+// 监听当前会话变化
+watch(() => convStore.currentConversation, (newVal) => {
+  if (newVal && isMobile.value) {
+    mobileView.value = 'chat';
+  }
+});
 
 // 生命周期钩子
 onMounted(async () => {
@@ -44,9 +62,15 @@ onMounted(async () => {
 
   // 智能初始化消息（自动判断是否需要从服务器获取）
   await msgStore.initMessages();
+  
+  // 从消息同步会话列表（初始化或恢复会话）
+  convStore.syncConversationsFromMessages();
 
   // 添加窗口大小变化监听
   window.addEventListener('resize', handleResize);
+  // 添加移动端事件监听
+  window.addEventListener('chat-selected', handleChatSelected);
+  window.addEventListener('back-to-list', handleBackToList);
   handleResize();
 });
 
@@ -55,38 +79,30 @@ onUnmounted(() => {
   // 停止消息轮询
   msgStore.stopPolling();
   
-  // 移除窗口大小变化监听
+  // 移除事件监听
   window.removeEventListener('resize', handleResize);
+  window.removeEventListener('chat-selected', handleChatSelected);
+  window.removeEventListener('back-to-list', handleBackToList);
 });
 </script>
 
 <template>
   <div class="home-container">
-    <!-- 移动设备切换按钮 -->
-    <button 
-      v-if="isMobile" 
-      class="mobile-toggle"
-      @click="toggleSidebar"
-    >
-      <el-icon v-if="activeSidebar"><ArrowRight /></el-icon>
-      <el-icon v-else><ChatDotRound /></el-icon>
-    </button>
-    
     <div class="chat-layout">
-      <!-- 侧边栏 -->
+      <!-- 侧边栏 - 移动端根据视图状态显示/隐藏 -->
       <div 
         class="sidebar-container"
-        :class="{ 'active': activeSidebar || !isMobile, 'mobile': isMobile }"
+        :class="{ 'mobile-hidden': isMobile && mobileView === 'chat' }"
       >
         <ChatSidebar />
       </div>
       
-      <!-- 聊天窗口 -->
+      <!-- 聊天窗口 - 移动端根据视图状态显示/隐藏 -->
       <div 
         class="window-container"
-        :class="{ 'active': !activeSidebar || !isMobile, 'mobile': isMobile }"
+        :class="{ 'mobile-visible': isMobile && mobileView === 'chat' }"
       >
-        <ChatWindow />
+        <ChatWindow :is-mobile="isMobile" :mobile-view="mobileView" />
       </div>
     </div>
   </div>
@@ -111,6 +127,7 @@ onUnmounted(() => {
   height: 100%;
   border-right: 1px solid var(--el-border-color-light);
   overflow: hidden;
+  background-color: #fff;
 }
 
 .window-container {
@@ -119,69 +136,45 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* 移动设备样式 */
-.mobile-toggle {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  z-index: 1000;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: var(--el-color-primary);
-  color: white;
-  border: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
-}
-
-.mobile.sidebar-container {
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  z-index: 999;
-  transition: left 0.3s ease;
-}
-
-.mobile.sidebar-container.active {
-  left: 0;
-}
-
-.mobile.window-container {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 1;
-  z-index: 900;
-  transition: opacity 0.3s ease;
-}
-
-.mobile.window-container.active {
-  opacity: 1;
-}
-
+/* 移动端适配 - QQ风格 (≤768px) */
 @media (max-width: 768px) {
   .sidebar-container {
-    position: absolute;
+    position: fixed;
     top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    z-index: 999;
-    transition: left 0.3s ease;
-  }
-
-  .sidebar-container.active {
     left: 0;
+    width: 100%;
+    height: 100vh;
+    z-index: 1;
+    border-right: none;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   }
+  
+  /* 移动端隐藏侧边栏 */
+  .sidebar-container.mobile-hidden {
+    transform: translateX(-100%);
+  }
+  
+  .window-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    z-index: 0;
+    transform: translateX(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  /* 移动端显示聊天窗口 */
+  .window-container.mobile-visible {
+    transform: translateX(0);
+    z-index: 2;
+  }
+}
 
+/* 小屏幕设备 (≤480px) */
+@media (max-width: 480px) {
+  .sidebar-container,
   .window-container {
     width: 100%;
   }
