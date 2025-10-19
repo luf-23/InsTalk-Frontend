@@ -24,30 +24,40 @@ export const friendshipStore = defineStore('friendship', () => {
         pending: false,
         search: false
     });
+    // 轮询定时器
+    let pollingTimer = null;
+    // 轮询间隔（毫秒）- 好友列表变化频率较低，使用 5 秒轮询
+    const pollingInterval = ref(5000); // 5秒轮询一次
+    // 是否启用轮询
+    const pollingEnabled = ref(true);
 
     // 获取好友列表
-    const fetchFriendList = async () => {
+    const fetchFriendList = async (silent = false) => {
         loading.value.friends = true;
         try {
             const data = await getFriendListService();
             friends.value = data || [];
         } catch (error) {
             console.error('获取好友列表失败:', error);
-            ElMessage.error('获取好友列表失败');
+            if (!silent) {
+                ElMessage.error('获取好友列表失败');
+            }
         } finally {
             loading.value.friends = false;
         }
     };
 
     // 获取待处理的好友申请
-    const fetchPendingRequests = async () => {
+    const fetchPendingRequests = async (silent = false) => {
         loading.value.pending = true;
         try {
             const data = await getPendingListService();
             pendingRequests.value = data || [];
         } catch (error) {
             console.error('获取好友申请列表失败:', error);
-            ElMessage.error('获取好友申请列表失败');
+            if (!silent) {
+                ElMessage.error('获取好友申请列表失败');
+            }
         } finally {
             loading.value.pending = false;
         }
@@ -157,8 +167,73 @@ export const friendshipStore = defineStore('friendship', () => {
         searchResults.value = [];
     };
 
+    // 启动轮询
+    const startPolling = () => {
+        // 检查是否启用轮询
+        if (!pollingEnabled.value) {
+            console.log('好友列表轮询已禁用，跳过启动');
+            return;
+        }
+        
+        // 如果已经有定时器在运行，先清除
+        if (pollingTimer) {
+            stopPolling();
+        }
+        
+        console.log('开始轮询好友和申请列表...');
+        
+        // 立即执行一次
+        fetchFriendList(true);
+        fetchPendingRequests(true);
+        
+        // 设置定时器
+        pollingTimer = setInterval(() => {
+            fetchFriendList(true); // silent 模式，不显示错误提示
+            fetchPendingRequests(true);
+        }, pollingInterval.value);
+    };
+
+    // 停止轮询
+    const stopPolling = () => {
+        if (pollingTimer) {
+            console.log('停止轮询好友和申请列表');
+            clearInterval(pollingTimer);
+            pollingTimer = null;
+        }
+    };
+
+    // 设置轮询间隔
+    const setPollingInterval = (interval) => {
+        if (interval < 1000) {
+            console.warn('轮询间隔不能小于1秒');
+            return;
+        }
+        pollingInterval.value = interval;
+        
+        // 如果正在轮询，重启轮询以应用新的间隔
+        if (pollingTimer) {
+            startPolling();
+        }
+    };
+
+    // 启用/禁用轮询
+    const setPollingEnabled = (enabled) => {
+        pollingEnabled.value = enabled;
+        
+        if (enabled) {
+            console.log('好友列表轮询已启用');
+            startPolling();
+        } else {
+            console.log('好友列表轮询已禁用');
+            stopPolling();
+        }
+    };
+
     // 清空所有数据（用于退出登录时）
     const clearFriendshipData = () => {
+        // 停止轮询
+        stopPolling();
+        
         friends.value = [];
         pendingRequests.value = [];
         searchResults.value = [];
@@ -174,6 +249,8 @@ export const friendshipStore = defineStore('friendship', () => {
         pendingRequests,
         searchResults,
         loading,
+        pollingInterval,
+        pollingEnabled,
         fetchFriendList,
         fetchPendingRequests,
         sendFriendRequest,
@@ -182,6 +259,10 @@ export const friendshipStore = defineStore('friendship', () => {
         deleteFriend,
         searchUsers,
         clearSearchResults,
-        clearFriendshipData
+        clearFriendshipData,
+        startPolling,
+        stopPolling,
+        setPollingInterval,
+        setPollingEnabled
     };
 });

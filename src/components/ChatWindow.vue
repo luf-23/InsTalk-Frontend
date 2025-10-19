@@ -664,6 +664,28 @@ watch(currentChat, (newChat) => {
 // 挂载后初始化
 onMounted(() => {
   scrollToBottom();
+  
+  // 移动端键盘处理
+  if (props.isMobile && messageInputRef.value) {
+    const textarea = messageInputRef.value.$el?.querySelector('textarea');
+    if (textarea) {
+      // 监听输入框聚焦，滚动到底部
+      textarea.addEventListener('focus', () => {
+        setTimeout(() => {
+          scrollToBottom();
+          // 确保输入框可见
+          textarea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }, 300); // 等待键盘弹出
+      });
+      
+      // 监听输入框失焦
+      textarea.addEventListener('blur', () => {
+        setTimeout(() => {
+          scrollToBottom();
+        }, 100);
+      });
+    }
+  }
 });
 
 // 清理事件监听器
@@ -1410,6 +1432,7 @@ const deleteMessage = () => {
   flex-direction: column;
   background-color: var(--el-bg-color);
   position: relative;
+  overflow: hidden;
 }
 
 .chat-window-content {
@@ -1417,6 +1440,7 @@ const deleteMessage = () => {
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
 }
 
 /* 聊天标题 */
@@ -1872,6 +1896,7 @@ const deleteMessage = () => {
   border-top: 1px solid var(--el-border-color-light);
   background-color: var(--el-bg-color);
   z-index: 5;
+  flex-shrink: 0;
 }
 
 .input-toolbar {
@@ -2192,6 +2217,53 @@ const deleteMessage = () => {
   }
   
   /* 对话框使用全局 dialog-mobile.css */
+  
+  /* 移动端布局优化 - 防止输入框被键盘遮挡 */
+  .chat-window {
+    /* 使用flex布局确保输入框始终可见 */
+    height: 100vh;
+    height: 100dvh; /* 动态视口高度，在键盘弹出时会自动调整 */
+  }
+  
+  .chat-window-content {
+    height: 100%;
+    max-height: 100vh;
+    max-height: 100dvh;
+  }
+  
+  /* 消息列表区域 */
+  .chat-messages {
+    flex: 1;
+    min-height: 0; /* 重要：允许flex子项收缩 */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch; /* iOS 平滑滚动 */
+    padding: 12px;
+    padding-bottom: 20px;
+  }
+  
+  /* 输入框区域 */
+  .chat-input {
+    flex-shrink: 0; /* 防止输入框被压缩 */
+    position: relative;
+    padding: 10px;
+    background-color: var(--el-bg-color);
+    border-top: 1px solid var(--el-border-color-light);
+    /* 添加安全区域适配 */
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+  }
+  
+  /* 输入框容器确保正确布局 */
+  .input-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+  }
+  
+  /* 文本框包装器 */
+  .textarea-wrapper {
+    flex: 1;
+    min-width: 0; /* 防止文本框溢出 */
+  }
 }
 
 @media (max-width: 480px) {
