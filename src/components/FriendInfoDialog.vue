@@ -1,164 +1,10 @@
-<template>
-  <el-dialog
-    v-model="visible"
-    title="好友信息"
-    width="480px"
-    :append-to-body="true"
-    destroy-on-close
-    @close="handleClose"
-  >
-    <div v-if="friendInfo" class="friend-info-container">
-      <!-- 好友头像和基本信息 -->
-      <div class="friend-profile">
-        <el-avatar :size="100" :src="friendInfo.avatar" class="profile-avatar">
-          {{ getInitials(friendInfo.username) }}
-        </el-avatar>
-        <div class="profile-status" :class="{ 'online': isOnline }"></div>
-        <h2>{{ friendInfo.username }}</h2>
-        <p v-if="friendInfo.signature" class="profile-signature">
-          {{ friendInfo.signature }}
-        </p>
-        <div class="online-status" :class="{ 'online': isOnline }">
-          {{ isOnline ? '在线' : '离线' }}
-        </div>
-      </div>
-
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="基本信息" name="basic">
-          <div class="info-section">
-            <div class="info-item">
-              <span class="info-label">用户名</span>
-              <span class="info-value">{{ friendInfo.username }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">个性签名</span>
-              <span class="info-value">{{ friendInfo.signature || '这个人很懒，什么都没写' }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">成为好友</span>
-              <span class="info-value">{{ formatDate(friendInfo.createdAt) }}</span>
-            </div>
-          </div>
-
-          <div class="action-buttons">
-            <el-button type="primary" icon="ChatDotRound" @click="startChat">
-              发送消息
-            </el-button>
-            <el-button type="danger" plain icon="Delete" @click="confirmDelete">
-              删除好友
-            </el-button>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="聊天记录" name="messages">
-          <div class="messages-section">
-            <div class="messages-header">
-              <el-input
-                v-model="messageSearchKeyword"
-                placeholder="搜索聊天记录"
-                prefix-icon="Search"
-                clearable
-                size="small"
-              />
-            </div>
-
-            <div class="messages-list" v-loading="loadingMessages">
-              <template v-if="filteredMessages.length > 0">
-                <div
-                  v-for="message in filteredMessages"
-                  :key="message.id"
-                  class="message-item"
-                  @click="locateMessage(message)"
-                >
-                  <div class="message-header">
-                    <span class="message-sender">
-                      {{ isOwnMessage(message) ? '我' : friendInfo.username }}
-                    </span>
-                    <span class="message-time">{{ formatDateTime(message.sendAt) }}</span>
-                  </div>
-                  <div class="message-content">
-                    <template v-if="message.messageType === 'TEXT'">
-                      {{ message.content }}
-                    </template>
-                    <template v-else-if="message.messageType === 'IMAGE'">
-                      <el-icon><Picture /></el-icon> [图片]
-                    </template>
-                    <template v-else-if="message.messageType === 'FILE'">
-                      <el-icon><Document /></el-icon> [文件]
-                    </template>
-                  </div>
-                </div>
-              </template>
-              <el-empty v-else description="暂无聊天记录" />
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="共享文件" name="media">
-          <div class="media-section">
-            <div class="media-filter">
-              <el-radio-group v-model="mediaFilter" size="small">
-                <el-radio-button label="all">全部</el-radio-button>
-                <el-radio-button label="image">图片</el-radio-button>
-                <el-radio-button label="file">文件</el-radio-button>
-              </el-radio-group>
-            </div>
-
-            <div class="media-list" v-loading="loadingMedia">
-              <template v-if="filteredMedia.length > 0">
-                <div
-                  v-for="item in filteredMedia"
-                  :key="item.id"
-                  class="media-item"
-                  @click="viewMedia(item)"
-                >
-                  <template v-if="item.messageType === 'IMAGE'">
-                    <el-image
-                      :src="item.content"
-                      fit="cover"
-                      class="media-image"
-                      @dblclick="openImageViewer(item.content)"
-                    >
-                      <template #error>
-                        <div class="image-error">
-                          <el-icon><Picture /></el-icon>
-                        </div>
-                      </template>
-                    </el-image>
-                  </template>
-                  <template v-else-if="item.messageType === 'FILE'">
-                    <div class="file-item">
-                      <el-icon class="file-icon"><Document /></el-icon>
-                      <div class="file-info">
-                        <div class="file-name">{{ getFileName(item.content) }}</div>
-                        <div class="file-date">{{ formatDate(item.sendAt) }}</div>
-                      </div>
-                    </div>
-                  </template>
-                </div>
-              </template>
-              <el-empty v-else description="暂无共享文件" />
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-    </div>
-
-    <!-- 图片查看器 -->
-    <ImageViewer
-      v-model:visible="imageViewerVisible"
-      :image-list="currentImageList"
-      :initial-index="currentImageIndex"
-    />
-  </el-dialog>
-</template>
-
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { ChatDotRound, Delete, Picture, Document, Search } from '@element-plus/icons-vue';
 import { friendshipStore } from '@/store/friendship';
 import { messageStore } from '@/store/message';
+import { onlineStatusStore } from '@/store/onlineStatus';
 import { useUserInfoStore } from '@/store/userInfo';
 import ImageViewer from './ImageViewer.vue';
 
@@ -181,6 +27,7 @@ const emit = defineEmits(['update:modelValue', 'close', 'startChat', 'delete']);
 // Store
 const friendStore = friendshipStore();
 const msgStore = messageStore();
+const onlineStore = onlineStatusStore();
 const userInfoStore = useUserInfoStore();
 
 // 响应式数据
@@ -205,10 +52,14 @@ const friendInfo = computed(() => {
   return friendStore.friends.find(f => f.id === props.friendId);
 });
 
-// 模拟在线状态
+// 好友在线状态
 const isOnline = computed(() => {
-  // TODO: 实现真实的在线状态
-  return Math.random() > 0.5;
+  if (!props.friendId) return false;
+  // 如果是查看自己，始终显示在线（虽然这种情况不太可能）
+  if (props.friendId === userInfoStore.userId) {
+    return true;
+  }
+  return onlineStore.isUserOnline(props.friendId);
 });
 
 // 聊天记录
@@ -369,6 +220,163 @@ watch(visible, (newVal) => {
   }
 });
 </script>
+
+
+<template>
+  <el-dialog
+    v-model="visible"
+    title="好友信息"
+    width="480px"
+    :append-to-body="true"
+    destroy-on-close
+    @close="handleClose"
+  >
+    <div v-if="friendInfo" class="friend-info-container">
+      <!-- 好友头像和基本信息 -->
+      <div class="friend-profile">
+        <el-avatar :size="100" :src="friendInfo.avatar" class="profile-avatar">
+          {{ getInitials(friendInfo.username) }}
+        </el-avatar>
+        <div class="profile-status" :class="{ 'online': isOnline }"></div>
+        <h2>{{ friendInfo.username }}</h2>
+        <p v-if="friendInfo.signature" class="profile-signature">
+          {{ friendInfo.signature }}
+        </p>
+        <div class="online-status" :class="{ 'online': isOnline }">
+          {{ isOnline ? '在线' : '离线' }}
+        </div>
+      </div>
+
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="基本信息" name="basic">
+          <div class="info-section">
+            <div class="info-item">
+              <span class="info-label">用户名</span>
+              <span class="info-value">{{ friendInfo.username }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">个性签名</span>
+              <span class="info-value">{{ friendInfo.signature || '这个人很懒，什么都没写' }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">成为好友</span>
+              <span class="info-value">{{ formatDate(friendInfo.createdAt) }}</span>
+            </div>
+          </div>
+
+          <div class="action-buttons">
+            <el-button type="primary" icon="ChatDotRound" @click="startChat">
+              发送消息
+            </el-button>
+            <el-button type="danger" plain icon="Delete" @click="confirmDelete">
+              删除好友
+            </el-button>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="聊天记录" name="messages">
+          <div class="messages-section">
+            <div class="messages-header">
+              <el-input
+                v-model="messageSearchKeyword"
+                placeholder="搜索聊天记录"
+                prefix-icon="Search"
+                clearable
+                size="small"
+              />
+            </div>
+
+            <div class="messages-list" v-loading="loadingMessages">
+              <template v-if="filteredMessages.length > 0">
+                <div
+                  v-for="message in filteredMessages"
+                  :key="message.id"
+                  class="message-item"
+                  @click="locateMessage(message)"
+                >
+                  <div class="message-header">
+                    <span class="message-sender">
+                      {{ isOwnMessage(message) ? '我' : friendInfo.username }}
+                    </span>
+                    <span class="message-time">{{ formatDateTime(message.sendAt) }}</span>
+                  </div>
+                  <div class="message-content">
+                    <template v-if="message.messageType === 'TEXT'">
+                      {{ message.content }}
+                    </template>
+                    <template v-else-if="message.messageType === 'IMAGE'">
+                      <el-icon><Picture /></el-icon> [图片]
+                    </template>
+                    <template v-else-if="message.messageType === 'FILE'">
+                      <el-icon><Document /></el-icon> [文件]
+                    </template>
+                  </div>
+                </div>
+              </template>
+              <el-empty v-else description="暂无聊天记录" />
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="共享文件" name="media">
+          <div class="media-section">
+            <div class="media-filter">
+              <el-radio-group v-model="mediaFilter" size="small">
+                <el-radio-button label="all">全部</el-radio-button>
+                <el-radio-button label="image">图片</el-radio-button>
+                <el-radio-button label="file">文件</el-radio-button>
+              </el-radio-group>
+            </div>
+
+            <div class="media-list" v-loading="loadingMedia">
+              <template v-if="filteredMedia.length > 0">
+                <div
+                  v-for="item in filteredMedia"
+                  :key="item.id"
+                  class="media-item"
+                  @click="viewMedia(item)"
+                >
+                  <template v-if="item.messageType === 'IMAGE'">
+                    <el-image
+                      :src="item.content"
+                      fit="cover"
+                      class="media-image"
+                      @dblclick="openImageViewer(item.content)"
+                    >
+                      <template #error>
+                        <div class="image-error">
+                          <el-icon><Picture /></el-icon>
+                        </div>
+                      </template>
+                    </el-image>
+                  </template>
+                  <template v-else-if="item.messageType === 'FILE'">
+                    <div class="file-item">
+                      <el-icon class="file-icon"><Document /></el-icon>
+                      <div class="file-info">
+                        <div class="file-name">{{ getFileName(item.content) }}</div>
+                        <div class="file-date">{{ formatDate(item.sendAt) }}</div>
+                      </div>
+                    </div>
+                  </template>
+                </div>
+              </template>
+              <el-empty v-else description="暂无共享文件" />
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-model:visible="imageViewerVisible"
+      :image-list="currentImageList"
+      :initial-index="currentImageIndex"
+    />
+  </el-dialog>
+</template>
+
 
 <style scoped>
 .friend-info-container {

@@ -7,12 +7,14 @@ import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
 import { conversationStore } from '@/store/conversation';
+import { onlineStatusStore } from '@/store/onlineStatus';
 
 const router = useRouter();
 const friendStore = friendshipStore();
 const gStore = groupStore();
 const msgStore = messageStore();
 const convStore = conversationStore();
+const onlineStore = onlineStatusStore();
 
 // 响应式断点
 const isMobile = ref(window.innerWidth < 768);
@@ -60,13 +62,16 @@ onMounted(async () => {
     gStore.fetchMyGroups()
   ]);
 
-  // 智能初始化消息（自动判断是否需要从服务器获取）
+  // 智能初始化消息（自动判断是否需要从服务器获取，并启动 WebSocket）
   await msgStore.initMessages();
+  
+  // 初始化在线状态
+  await onlineStore.initOnlineStatus();
   
   // 从消息同步会话列表（初始化或恢复会话）
   convStore.syncConversationsFromMessages();
 
-  // 启动好友和申请列表轮询（30秒间隔）
+  // 启动好友和申请列表轮询（30秒间隔）- 保留用于好友请求等非实时性要求不高的数据
   friendStore.startPolling();
   
   // 启动群组列表轮询（30秒间隔）
@@ -82,10 +87,15 @@ onMounted(async () => {
 
 // 组件卸载时清理资源
 onUnmounted(() => {
-  // 停止所有轮询
-  msgStore.stopPolling();
+  // 停止轮询（好友和群组列表）
   friendStore.stopPolling();
   gStore.stopPolling();
+  
+  // 断开 WebSocket
+  msgStore.disconnectWebSocket();
+  
+  // 清理在线状态
+  onlineStore.clearOnlineStatus();
   
   // 移除事件监听
   window.removeEventListener('resize', handleResize);

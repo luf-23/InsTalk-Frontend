@@ -1,154 +1,3 @@
-<template>
-  <el-dialog
-    v-model="visible"
-    title="个人信息"
-    width="480px"
-    :append-to-body="true"
-    destroy-on-close
-    @close="handleClose"
-  >
-    <div class="user-profile-container">
-      <!-- 用户头像和基本信息 -->
-      <div class="profile-header">
-        <div class="avatar-wrapper">
-          <el-avatar :size="100" :src="userInfo.avatar" class="profile-avatar" @click="viewAvatar">
-            {{ getInitials(userInfo.username) }}
-          </el-avatar>
-          <el-tooltip content="更换头像" placement="bottom">
-            <div class="avatar-overlay" @click="triggerAvatarUpload">
-              <el-icon><Camera /></el-icon>
-            </div>
-          </el-tooltip>
-        </div>
-        <h2>{{ userInfo.username }}</h2>
-        <p v-if="userInfo.signature" class="user-signature">{{ userInfo.signature }}</p>
-      </div>
-
-      <!-- 详细信息 -->
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="基本信息" name="basic">
-          <div class="info-section">
-            <div class="info-item">
-              <span class="info-label">用户名</span>
-              <span class="info-value">{{ userInfo.username }}</span>
-            </div>
-            <div class="info-item">
-              <span class="info-label">个性签名</span>
-              <div class="info-value editable">
-                <span v-if="!editingSignature">{{ userInfo.signature || '这个人很懒，什么都没写' }}</span>
-                <el-input
-                  v-else
-                  v-model="editForm.signature"
-                  size="small"
-                  maxlength="50"
-                  show-word-limit
-                  placeholder="填写个性签名"
-                />
-                <el-button
-                  v-if="!editingSignature"
-                  type="primary"
-                  link
-                  size="small"
-                  @click="startEditSignature"
-                >
-                  编辑
-                </el-button>
-                <div v-else class="edit-actions">
-                  <el-button type="primary" link size="small" @click="saveSignature">保存</el-button>
-                  <el-button link size="small" @click="cancelEditSignature">取消</el-button>
-                </div>
-              </div>
-            </div>
-            <div class="info-item">
-              <span class="info-label">角色</span>
-              <el-tag :type="userInfo.role === 'admin' ? 'danger' : 'info'">
-                {{ userInfo.role === 'admin' ? '管理员' : '用户' }}
-              </el-tag>
-            </div>
-            <div class="info-item">
-              <span class="info-label">注册时间</span>
-              <span class="info-value">{{ formatDate(userInfo.createdAt) }}</span>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="账户安全" name="security">
-          <div class="security-section">
-            <div class="security-item" @click="showChangePassword">
-              <div class="security-info">
-                <el-icon class="security-icon"><Lock /></el-icon>
-                <div class="security-text">
-                  <h4>修改密码</h4>
-                  <p>定期修改密码可以保护账户安全</p>
-                </div>
-              </div>
-              <el-icon><ArrowRight /></el-icon>
-            </div>
-            <div class="security-item" @click="showBindEmail">
-              <div class="security-info">
-                <el-icon class="security-icon"><Message /></el-icon>
-                <div class="security-text">
-                  <h4>绑定邮箱</h4>
-                  <p>{{ userInfo.email || '未绑定' }}</p>
-                </div>
-              </div>
-              <el-icon><ArrowRight /></el-icon>
-            </div>
-          </div>
-        </el-tab-pane>
-
-        <el-tab-pane label="统计信息" name="stats">
-          <div class="stats-section">
-            <div class="stat-card">
-              <div class="stat-icon">
-                <el-icon><UserFilled /></el-icon>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value">{{ friendCount }}</div>
-                <div class="stat-label">好友数量</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">
-                <el-icon><Collection /></el-icon>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value">{{ groupCount }}</div>
-                <div class="stat-label">群组数量</div>
-              </div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">
-                <el-icon><ChatDotRound /></el-icon>
-              </div>
-              <div class="stat-info">
-                <div class="stat-value">{{ messageCount }}</div>
-                <div class="stat-label">消息数量</div>
-              </div>
-            </div>
-          </div>
-        </el-tab-pane>
-      </el-tabs>
-
-      <!-- 隐藏的文件上传输入 -->
-      <input
-        ref="avatarInputRef"
-        type="file"
-        accept="image/*"
-        style="display: none"
-        @change="handleAvatarUpload"
-      />
-    </div>
-
-    <!-- 图片查看器 -->
-    <ImageViewer
-      v-model:visible="imageViewerVisible"
-      :image-list="[userInfo.avatar]"
-      :initial-index="0"
-    />
-  </el-dialog>
-</template>
-
 <script setup>
 import { ref, computed, watch } from 'vue';
 import { ElMessage } from 'element-plus';
@@ -312,6 +161,159 @@ const showBindEmail = () => {
   ElMessage.info('绑定邮箱功能开发中...');
 };
 </script>
+
+
+<template>
+  <el-dialog
+    v-model="visible"
+    title="个人信息"
+    width="480px"
+    :append-to-body="true"
+    destroy-on-close
+    @close="handleClose"
+  >
+    <div class="user-profile-container">
+      <!-- 用户头像和基本信息 -->
+      <div class="profile-header">
+        <div class="avatar-wrapper">
+          <el-avatar :size="100" :src="userInfo.avatar" class="profile-avatar" @click="viewAvatar">
+            {{ getInitials(userInfo.username) }}
+          </el-avatar>
+          <el-tooltip content="更换头像" placement="bottom">
+            <div class="avatar-overlay" @click="triggerAvatarUpload">
+              <el-icon><Camera /></el-icon>
+            </div>
+          </el-tooltip>
+        </div>
+        <h2>{{ userInfo.username }}</h2>
+        <p v-if="userInfo.signature" class="user-signature">{{ userInfo.signature }}</p>
+      </div>
+
+      <!-- 详细信息 -->
+      <el-tabs v-model="activeTab">
+        <el-tab-pane label="基本信息" name="basic">
+          <div class="info-section">
+            <div class="info-item">
+              <span class="info-label">用户名</span>
+              <span class="info-value">{{ userInfo.username }}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">个性签名</span>
+              <div class="info-value editable">
+                <span v-if="!editingSignature">{{ userInfo.signature || '这个人很懒，什么都没写' }}</span>
+                <el-input
+                  v-else
+                  v-model="editForm.signature"
+                  size="small"
+                  maxlength="50"
+                  show-word-limit
+                  placeholder="填写个性签名"
+                />
+                <el-button
+                  v-if="!editingSignature"
+                  type="primary"
+                  link
+                  size="small"
+                  @click="startEditSignature"
+                >
+                  编辑
+                </el-button>
+                <div v-else class="edit-actions">
+                  <el-button type="primary" link size="small" @click="saveSignature">保存</el-button>
+                  <el-button link size="small" @click="cancelEditSignature">取消</el-button>
+                </div>
+              </div>
+            </div>
+            <div class="info-item">
+              <span class="info-label">角色</span>
+              <el-tag :type="userInfo.role === 'admin' ? 'danger' : 'info'">
+                {{ userInfo.role === 'admin' ? '管理员' : '用户' }}
+              </el-tag>
+            </div>
+            <div class="info-item">
+              <span class="info-label">注册时间</span>
+              <span class="info-value">{{ formatDate(userInfo.createdAt) }}</span>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="账户安全" name="security">
+          <div class="security-section">
+            <div class="security-item" @click="showChangePassword">
+              <div class="security-info">
+                <el-icon class="security-icon"><Lock /></el-icon>
+                <div class="security-text">
+                  <h4>修改密码</h4>
+                  <p>定期修改密码可以保护账户安全</p>
+                </div>
+              </div>
+              <el-icon><ArrowRight /></el-icon>
+            </div>
+            <div class="security-item" @click="showBindEmail">
+              <div class="security-info">
+                <el-icon class="security-icon"><Message /></el-icon>
+                <div class="security-text">
+                  <h4>绑定邮箱</h4>
+                  <p>{{ userInfo.email || '未绑定' }}</p>
+                </div>
+              </div>
+              <el-icon><ArrowRight /></el-icon>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="统计信息" name="stats">
+          <div class="stats-section">
+            <div class="stat-card">
+              <div class="stat-icon">
+                <el-icon><UserFilled /></el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ friendCount }}</div>
+                <div class="stat-label">好友数量</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">
+                <el-icon><Collection /></el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ groupCount }}</div>
+                <div class="stat-label">群组数量</div>
+              </div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">
+                <el-icon><ChatDotRound /></el-icon>
+              </div>
+              <div class="stat-info">
+                <div class="stat-value">{{ messageCount }}</div>
+                <div class="stat-label">消息数量</div>
+              </div>
+            </div>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+
+      <!-- 隐藏的文件上传输入 -->
+      <input
+        ref="avatarInputRef"
+        type="file"
+        accept="image/*"
+        style="display: none"
+        @change="handleAvatarUpload"
+      />
+    </div>
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-model:visible="imageViewerVisible"
+      :image-list="[userInfo.avatar]"
+      :initial-index="0"
+    />
+  </el-dialog>
+</template>
+
 
 <style scoped>
 .user-profile-container {

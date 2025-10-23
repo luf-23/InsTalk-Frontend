@@ -29,7 +29,7 @@ export const friendshipStore = defineStore('friendship', () => {
     // 轮询间隔（毫秒）- 好友列表变化频率较低，使用 5 秒轮询
     const pollingInterval = ref(5000); // 5秒轮询一次
     // 是否启用轮询
-    const pollingEnabled = ref(true);
+    const pollingEnabled = ref(false);
 
     // 获取好友列表
     const fetchFriendList = async (silent = false) => {

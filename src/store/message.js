@@ -1,9 +1,11 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { sendMessageService, getMessageHistoryService, getNewMessagesService } from "@/api/message";
+import { sendMessageService, getMessageHistoryService } from "@/api/message";
 import { useUserInfoStore } from "@/store/userInfo";
 import { conversationStore } from "@/store/conversation";
 import { ElMessage } from "element-plus";
+import websocketService from "@/util/websocket";
+import { useAuthStore } from "@/store/auth";
 
 // 时间比较辅助函数
 const getTimeForComparison = (timeString) => {
@@ -26,12 +28,11 @@ export const messageStore = defineStore('message', () => {
         messages: false,
         send: false
     });
-    // 轮询定时器
-    let pollingTimer = null;
-    // 轮询间隔（毫秒）
-    const pollingInterval = ref(2000); // 默认2秒轮询一次
-    // 是否启用轮询（用于调试）
-    const pollingEnabled = ref(true); // 设为 false 可关闭轮询
+    // WebSocket 连接状态
+    const wsConnected = ref(false);
+    // WebSocket 消息处理器
+    let wsMessageHandler = null;
+    let wsOnlineStatusHandler = null;
 
     // 获取消息历史（强制从服务器刷新）
     const fetchMessageHistory = async (force = false) => {
@@ -59,16 +60,114 @@ export const messageStore = defineStore('message', () => {
         // 如果本地已有消息，直接使用本地数据
         if (messages.value.length > 0) {
             console.log(`使用本地缓存的 ${messages.value.length} 条消息`);
-            // 启动轮询获取新消息
-            startPolling();
-            return;
+        } else {
+            // 本地无数据，从服务器获取
+            console.log('本地无消息，从服务器获取历史消息');
+            await fetchMessageHistory(true);
         }
         
-        // 本地无数据，从服务器获取
-        console.log('本地无消息，从服务器获取历史消息');
-        await fetchMessageHistory(true);
-        // 启动轮询
-        startPolling();
+        // 初始化 WebSocket 连接
+        initWebSocket();
+    };
+
+    /**
+     * 初始化 WebSocket 连接
+     */
+    const initWebSocket = () => {
+        const authStore = useAuthStore();
+        const token = authStore.accessToken;
+        
+        if (!token) {
+            console.error('无法初始化 WebSocket：缺少访问令牌');
+            return;
+        }
+
+        // 注册消息处理器
+        wsMessageHandler = (messageVO) => {
+            console.log('收到新消息通过 WebSocket:', messageVO);
+            
+            // 检查消息是否已存在
+            const exists = messages.value.some(m => m.id === messageVO.id);
+            if (!exists) {
+                messages.value.push(messageVO);
+                
+                // 创建或更新会话
+                const convStore = conversationStore();
+                const currentUserId = getCurrentUserId();
+                
+                let conversationId, conversationType;
+                
+                if (messageVO.groupId) {
+                    // 群组消息
+                    conversationId = messageVO.groupId;
+                    conversationType = 'group';
+                } else {
+                    // 好友消息：找到对方的 ID
+                    conversationId = messageVO.senderId === currentUserId 
+                        ? messageVO.receiverId 
+                        : messageVO.senderId;
+                    conversationType = 'friend';
+                }
+                
+                // 创建或更新会话（新收到的消息）
+                convStore.createOrUpdateConversation({
+                    id: conversationId,
+                    type: conversationType,
+                    lastMessage: messageVO,
+                    isNewMessage: true
+                });
+                
+                // 显示通知（如果不在当前聊天窗口）
+                if (!currentChat.value || 
+                    currentChat.value.id !== conversationId || 
+                    chatType.value !== conversationType) {
+                    ElMessage.info({
+                        message: `收到新消息`,
+                        duration: 2000
+                    });
+                }
+            }
+        };
+
+        wsOnlineStatusHandler = (statusData) => {
+            console.log('用户在线状态更新:', statusData);
+            // 可以在这里更新好友列表的在线状态
+            // 这里暂时只记录日志，具体实现可以在 friendship store 中处理
+        };
+
+        // 注册处理器
+        websocketService.on('newMessage', wsMessageHandler);
+        websocketService.on('onlineStatus', wsOnlineStatusHandler);
+        websocketService.on('open', () => {
+            wsConnected.value = true;
+            console.log('WebSocket 已连接');
+        });
+        websocketService.on('close', () => {
+            wsConnected.value = false;
+            console.log('WebSocket 已断开');
+        });
+
+        // 连接 WebSocket
+        websocketService.connect(token);
+    };
+
+    /**
+     * 断开 WebSocket 连接
+     */
+    const disconnectWebSocket = () => {
+        // 移除处理器
+        if (wsMessageHandler) {
+            websocketService.off('newMessage', wsMessageHandler);
+            wsMessageHandler = null;
+        }
+        if (wsOnlineStatusHandler) {
+            websocketService.off('onlineStatus', wsOnlineStatusHandler);
+            wsOnlineStatusHandler = null;
+        }
+
+        // 断开连接
+        websocketService.disconnect();
+        wsConnected.value = false;
     };
 
     // 发送消息
@@ -78,20 +177,24 @@ export const messageStore = defineStore('message', () => {
             // API 返回 MessageVO
             const messageVO = await sendMessageService(messageData);
             if (messageVO) {
-                // 直接将返回的消息插入到消息列表中
-                messages.value.push(messageVO);
-                
-                // 创建或更新会话（自己发送的消息，不增加未读数）
-                const convStore = conversationStore();
-                const conversationId = messageVO.groupId || messageVO.receiverId;
-                const conversationType = messageVO.groupId ? 'group' : 'friend';
-                
-                convStore.createOrUpdateConversation({
-                    id: conversationId,
-                    type: conversationType,
-                    lastMessage: messageVO,
-                    isNewMessage: false // 自己发送的消息
-                });
+                // 检查消息是否已存在(避免与 WebSocket 重复)
+                const exists = messages.value.some(m => m.id === messageVO.id);
+                if (!exists) {
+                    // 直接将返回的消息插入到消息列表中
+                    messages.value.push(messageVO);
+                    
+                    // 创建或更新会话（自己发送的消息，不增加未读数）
+                    const convStore = conversationStore();
+                    const conversationId = messageVO.groupId || messageVO.receiverId;
+                    const conversationType = messageVO.groupId ? 'group' : 'friend';
+                    
+                    convStore.createOrUpdateConversation({
+                        id: conversationId,
+                        type: conversationType,
+                        lastMessage: messageVO,
+                        isNewMessage: false // 自己发送的消息
+                    });
+                }
                 
                 return true;
             }
@@ -105,7 +208,7 @@ export const messageStore = defineStore('message', () => {
         }
     };
 
-    // 获取最新的一条消息（用于轮询时传递给后端）
+    // 获取最新的一条消息（用于显示）
     const getLastMessage = () => {
         if (messages.value.length === 0) return null;
         
@@ -114,125 +217,6 @@ export const messageStore = defineStore('message', () => {
             getTimeForComparison(b.sentAt) - getTimeForComparison(a.sentAt)
         );
         return sortedMessages[0];
-    };
-
-    // 获取新消息
-    const fetchNewMessages = async () => {
-        try {
-            const lastMessage = getLastMessage();
-            // 如果没有上一条消息，避免向后端发送 null，传 undefined 让 service 使用默认的空对象 {}
-            const newMessages = await getNewMessagesService(lastMessage ?? undefined);
-            
-            if (newMessages && newMessages.length > 0) {
-                // 过滤掉已存在的消息（根据消息ID）
-                const existingIds = new Set(messages.value.map(m => m.id));
-                const uniqueNewMessages = newMessages.filter(m => !existingIds.has(m.id));
-                
-                // 将新消息添加到消息列表
-                messages.value.push(...uniqueNewMessages);
-                
-                // 为每条新消息创建或更新会话
-                const convStore = conversationStore();
-                const currentUserId = getCurrentUserId();
-                
-                uniqueNewMessages.forEach(message => {
-                    // 判断会话 ID 和类型
-                    let conversationId, conversationType;
-                    
-                    if (message.groupId) {
-                        // 群组消息
-                        conversationId = message.groupId;
-                        conversationType = 'group';
-                    } else {
-                        // 好友消息：找到对方的 ID
-                        conversationId = message.senderId === currentUserId 
-                            ? message.receiverId 
-                            : message.senderId;
-                        conversationType = 'friend';
-                    }
-                    
-                    // 创建或更新会话（新收到的消息）
-                    convStore.createOrUpdateConversation({
-                        id: conversationId,
-                        type: conversationType,
-                        lastMessage: message,
-                        isNewMessage: true // 新收到的消息，会增加未读数
-                    });
-                });
-                
-                // 如果有新消息且不在当前聊天窗口，可以显示提示
-                if (uniqueNewMessages.length > 0) {
-                    console.log(`收到 ${uniqueNewMessages.length} 条新消息`);
-                }
-                
-                return uniqueNewMessages;
-            }
-            return [];
-        } catch (error) {
-            console.error('获取新消息失败:', error);
-            // 轮询失败不显示错误提示，避免打扰用户
-            return [];
-        }
-    };
-
-    // 启动轮询
-    const startPolling = () => {
-        // 检查是否启用轮询
-        if (!pollingEnabled.value) {
-            console.log('轮询已禁用，跳过启动');
-            return;
-        }
-        
-        // 如果已经有定时器在运行，先清除
-        if (pollingTimer) {
-            stopPolling();
-        }
-        
-        console.log('开始轮询新消息...');
-        
-        // 立即执行一次
-        fetchNewMessages();
-        
-        // 设置定时器
-        pollingTimer = setInterval(() => {
-            fetchNewMessages();
-        }, pollingInterval.value);
-    };
-
-    // 停止轮询
-    const stopPolling = () => {
-        if (pollingTimer) {
-            console.log('停止轮询新消息');
-            clearInterval(pollingTimer);
-            pollingTimer = null;
-        }
-    };
-
-    // 设置轮询间隔
-    const setPollingInterval = (interval) => {
-        if (interval < 1000) {
-            console.warn('轮询间隔不能小于1秒');
-            return;
-        }
-        pollingInterval.value = interval;
-        
-        // 如果正在轮询，重启轮询以应用新的间隔
-        if (pollingTimer) {
-            startPolling();
-        }
-    };
-
-    // 启用/禁用轮询
-    const setPollingEnabled = (enabled) => {
-        pollingEnabled.value = enabled;
-        
-        if (enabled) {
-            console.log('轮询已启用');
-            startPolling();
-        } else {
-            console.log('轮询已禁用');
-            stopPolling();
-        }
     };
 
     // 设置当前聊天对象
@@ -307,8 +291,8 @@ export const messageStore = defineStore('message', () => {
 
     // 清空所有数据（用于退出登录时）
     const clearMessageData = () => {
-        // 停止轮询
-        stopPolling();
+        // 断开 WebSocket
+        disconnectWebSocket();
         
         messages.value = [];
         currentChat.value = null;
@@ -324,8 +308,7 @@ export const messageStore = defineStore('message', () => {
         currentChat,
         chatType,
         loading,
-        pollingInterval,
-        pollingEnabled,
+        wsConnected,
         initMessages,
         fetchMessageHistory,
         sendMessage,
@@ -333,11 +316,8 @@ export const messageStore = defineStore('message', () => {
         getCurrentChatMessages,
         getChatList,
         clearMessageData,
-        fetchNewMessages,
-        startPolling,
-        stopPolling,
-        setPollingInterval,
-        setPollingEnabled
+        initWebSocket,
+        disconnectWebSocket
     };
 }, {
     persist: {

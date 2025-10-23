@@ -1,3 +1,502 @@
+<script setup>
+import { ref, computed, watch } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import {
+  UserFilled, Calendar, More, ChatDotRound, Star, Close, Delete,
+  RemoveFilled, Picture, Document, Search, Upload
+} from '@element-plus/icons-vue';
+import { groupStore } from '@/store/group';
+import { messageStore } from '@/store/message';
+import { onlineStatusStore } from '@/store/onlineStatus';
+import { useUserInfoStore } from '@/store/userInfo';
+import { updateGroupInfoService } from '@/api/group';
+import { ossClient } from '@/util/oss';
+import ImageViewer from './ImageViewer.vue';
+
+// Props
+const props = defineProps({
+  modelValue: {
+    type: Boolean,
+    default: false
+  },
+  groupId: {
+    type: [String, Number],
+    required: false,
+    default: null
+  }
+});
+
+// Emits
+const emit = defineEmits(['update:modelValue', 'close', 'sendMessage', 'leave']);
+
+// Store
+const gStore = groupStore();
+const msgStore = messageStore();
+const onlineStore = onlineStatusStore();
+const userInfoStore = useUserInfoStore();
+
+// 响应式数据
+const visible = computed({
+  get: () => props.modelValue,
+  set: (val) => emit('update:modelValue', val)
+});
+
+const activeTab = ref('members');
+const memberSearchKeyword = ref('');
+const messageSearchKeyword = ref('');
+const mediaFilter = ref('all');
+const loadingMessages = ref(false);
+const loadingMedia = ref(false);
+const updatingGroup = ref(false);
+const uploadingAvatar = ref(false);
+
+// 图片查看器
+const imageViewerVisible = ref(false);
+const currentImageList = ref([]);
+const currentImageIndex = ref(0);
+
+const editGroupFormRef = ref(null);
+const editForm = ref({
+  name: '',
+  description: '',
+  avatar: ''
+});
+
+const editGroupRules = {
+  name: [
+    { required: true, message: '请输入群组名称', trigger: 'blur' },
+    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
+  ],
+  description: [
+    { max: 100, message: '最多100个字符', trigger: 'blur' }
+  ]
+};
+
+// 当前用户ID
+const currentUserId = computed(() => userInfoStore.userId);
+
+// 群组信息
+const groupInfo = computed(() => {
+  return gStore.allGroups.find(g => g.id === props.groupId);
+});
+// 群组成员
+const groupMembers = computed(() => {
+  return groupInfo.value?.members || [];
+});
+
+// 过滤后的成员
+const filteredMembers = computed(() => {
+  if (!memberSearchKeyword.value) return groupMembers.value;
+  
+  const keyword = memberSearchKeyword.value.toLowerCase();
+  return groupMembers.value.filter(member => {
+    return (member.username && member.username.toLowerCase().includes(keyword));
+  });
+});
+
+// 聊天记录
+const messages = computed(() => {
+  if (!props.groupId) return [];
+  
+  return msgStore.messages.filter(msg => {
+    // 过滤出该群组的所有消息
+    return msg.groupId === props.groupId;
+  }).sort((a, b) => {
+    const timeA = new Date(a.sentAt).getTime();
+    const timeB = new Date(b.sentAt).getTime();
+    return timeB - timeA;
+  });
+});
+
+// 过滤后的消息
+const filteredMessages = computed(() => {
+  if (!messageSearchKeyword.value) return messages.value;
+  
+  const keyword = messageSearchKeyword.value.toLowerCase();
+  return messages.value.filter(msg => {
+    if (msg.messageType === 'TEXT') {
+      return msg.content.toLowerCase().includes(keyword);
+    }
+    return false;
+  });
+});
+
+// 媒体文件
+const mediaMessages = computed(() => {
+  return messages.value.filter(msg => 
+    msg.messageType === 'IMAGE' || msg.messageType === 'FILE'
+  );
+});
+
+// 过滤后的媒体文件
+const filteredMedia = computed(() => {
+  if (mediaFilter.value === 'all') return mediaMessages.value;
+  if (mediaFilter.value === 'image') {
+    return mediaMessages.value.filter(msg => msg.messageType === 'IMAGE');
+  }
+  if (mediaFilter.value === 'file') {
+    return mediaMessages.value.filter(msg => msg.messageType === 'FILE');
+  }
+  return mediaMessages.value;
+});
+
+// 图片预览列表
+const imagePreviewList = computed(() => {
+  return mediaMessages.value
+    .filter(msg => msg.messageType === 'IMAGE')
+    .map(msg => msg.content);
+});
+
+// 判断当前用户是否为管理员
+const isCurrentUserAdmin = computed(() => {
+  if (!groupInfo.value) return false;
+  
+  // 群主肯定是管理员
+  if (groupInfo.value.ownerId === currentUserId.value) return true;
+  
+  // 检查是否在管理员列表中
+  return groupInfo.value.adminIds?.includes(currentUserId.value) || false;
+});
+
+// 方法
+const getInitials = (name) => {
+  if (!name) return '?';
+  return name.substring(0, 2).toUpperCase();
+};
+
+const formatDate = (date) => {
+  if (!date) return '';
+  return new Date(date).toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+};
+
+const formatDateTime = (date) => {
+  if (!date) return '';
+  return new Date(date).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+};
+
+const formatJoinTime = (date) => {
+  if (!date) return '';
+  const joinDate = new Date(date);
+  const now = new Date();
+  const diffTime = now - joinDate;
+  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) {
+    return '今天';
+  } else if (diffDays === 1) {
+    return '昨天';
+  } else if (diffDays < 7) {
+    return `${diffDays}天前`;
+  } else if (diffDays < 30) {
+    const weeks = Math.floor(diffDays / 7);
+    return `${weeks}周前`;
+  } else if (diffDays < 365) {
+    const months = Math.floor(diffDays / 30);
+    return `${months}个月前`;
+  } else {
+    const years = Math.floor(diffDays / 365);
+    return `${years}年前`;
+  }
+};
+
+const isGroupOwner = (userId) => {
+  return groupInfo.value?.ownerId === userId;
+};
+
+const isGroupAdmin = (userId) => {
+  return groupInfo.value?.adminIds?.includes(userId) || false;
+};
+
+const isUserOnline = (userId) => {
+  // 自己始终显示为在线
+  if (userId === currentUserId.value) {
+    return true;
+  }
+  return onlineStore.isUserOnline(userId);
+};
+
+const getSenderName = (message) => {
+  if (message.senderId === currentUserId.value) return '我';
+  
+  const sender = groupMembers.value.find(m => m.id === message.senderId);
+  return sender?.username || '未知用户';
+};
+
+const getFileName = (url) => {
+  if (!url) return '未知文件';
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/');
+    return decodeURIComponent(pathParts[pathParts.length - 1]);
+  } catch (e) {
+    const parts = url.split('/');
+    return parts[parts.length - 1];
+  }
+};
+
+// 权限判断
+const canManageMember = (memberId) => {
+  // 不能操作自己
+  if (memberId === currentUserId.value) return false;
+  // 只有管理员可以操作
+  return isCurrentUserAdmin.value;
+};
+
+const canSetAdmin = (memberId) => {
+  // 只有群主可以设置管理员，且目标不是已有的管理员
+  return isGroupOwner(currentUserId.value) && 
+         !isGroupOwner(memberId) && 
+         !isGroupAdmin(memberId);
+};
+
+const canRemoveAdmin = (memberId) => {
+  // 只有群主可以取消管理员
+  return isGroupOwner(currentUserId.value) && isGroupAdmin(memberId);
+};
+
+const canRemoveMember = (memberId) => {
+  // 群主可以移除任何人（除了自己），管理员只能移除普通成员
+  if (memberId === currentUserId.value) return false;
+  
+  if (isGroupOwner(currentUserId.value)) {
+    return true;
+  } else if (isGroupAdmin(currentUserId.value)) {
+    return !isGroupOwner(memberId) && !isGroupAdmin(memberId);
+  }
+  return false;
+};
+
+// 操作方法
+const handleClose = () => {
+  emit('close');
+};
+
+const sendPrivateMessage = (member) => {
+  emit('sendMessage', member);
+  visible.value = false;
+};
+
+const setAsAdmin = (memberId) => {
+  ElMessageBox.confirm(
+    '确定要将该成员设为管理员吗？',
+    '设置管理员',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'info',
+    }
+  ).then(() => {
+    ElMessage.info('设置管理员功能开发中...');
+    // TODO: 调用API设置管理员
+  }).catch(() => {});
+};
+
+const removeAdmin = (memberId) => {
+  ElMessageBox.confirm(
+    '确定要取消该成员的管理员身份吗？',
+    '取消管理员',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    ElMessage.info('取消管理员功能开发中...');
+    // TODO: 调用API取消管理员
+  }).catch(() => {});
+};
+
+const confirmRemoveMember = (member) => {
+  ElMessageBox.confirm(
+    `确定要将 ${member.username} 移出群组吗？`,
+    '移出成员',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    ElMessage.info('移出成员功能开发中...');
+    // TODO: 调用API移出成员
+  }).catch(() => {});
+};
+
+const locateMessage = (message) => {
+  ElMessage.info('定位到消息功能开发中...');
+  // TODO: 实现跳转到指定消息
+};
+
+const viewMedia = (item) => {
+  if (item.messageType === 'FILE') {
+    window.open(item.content, '_blank');
+  } else if (item.messageType === 'IMAGE') {
+    openImageViewer(item.content);
+  }
+};
+
+// 打开图片查看器
+const openImageViewer = (imageUrl) => {
+  // 收集所有图片消息的URL
+  const imageMessages = mediaMessages.value.filter(msg => msg.messageType === 'IMAGE');
+  currentImageList.value = imageMessages.map(msg => msg.content);
+  
+  // 找到当前图片的索引
+  currentImageIndex.value = currentImageList.value.findIndex(url => url === imageUrl);
+  if (currentImageIndex.value === -1) {
+    currentImageIndex.value = 0;
+  }
+  
+  imageViewerVisible.value = true;
+};
+
+const beforeAvatarUpload = (file) => {
+  const isImage = file.type.startsWith('image/');
+  const isLt5M = file.size / 1024 / 1024 < 5;
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!');
+    return false;
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!');
+    return false;
+  }
+  return true;
+};
+
+const handleAvatarUpload = async (options) => {
+  const { file } = options;
+  
+  uploadingAvatar.value = true;
+  
+  try {
+    // 初始化 OSS 客户端
+    if (!ossClient.client) {
+      await ossClient.init();
+    }
+    
+    // 生成文件名
+    const extension = file.name.split('.').pop();
+    const fileName = ossClient.generateFileName(extension);
+    
+    // 上传文件
+    await ossClient.uploadFile(fileName, file);
+    
+    // 生成文件 URL
+    const avatarUrl = ossClient.generateFileUrl(fileName);
+    
+    // 更新表单中的头像字段
+    editForm.value.avatar = avatarUrl;
+    
+    ElMessage.success('头像上传成功');
+  } catch (error) {
+    console.error('头像上传失败:', error);
+    ElMessage.error('头像上传失败');
+  } finally {
+    uploadingAvatar.value = false;
+  }
+};
+
+const saveGroupSettings = async () => {
+  if (!editGroupFormRef.value) return;
+  
+  try {
+    await editGroupFormRef.value.validate();
+    
+    updatingGroup.value = true;
+    
+    // 构建更新数据对象
+    const updateData = {
+      id: props.groupId
+    };
+    
+    // 只添加修改过的字段
+    if (editForm.value.name !== groupInfo.value.name) {
+      updateData.name = editForm.value.name;
+    }
+    if (editForm.value.description !== groupInfo.value.description) {
+      updateData.description = editForm.value.description;
+    }
+    if (editForm.value.avatar && editForm.value.avatar !== groupInfo.value.avatar) {
+      updateData.avatar = editForm.value.avatar;
+    }
+    
+    // 如果没有任何修改，直接返回
+    if (Object.keys(updateData).length === 1) {
+      ElMessage.info('没有修改任何内容');
+      updatingGroup.value = false;
+      return;
+    }
+    
+    // 调用 store 方法更新群组信息
+    await gStore.updateGroupInfo(updateData);
+    
+    ElMessage.success('保存成功');
+    
+  } catch (error) {
+    console.error('保存群组设置失败:', error);
+    ElMessage.error('保存失败');
+  } finally {
+    updatingGroup.value = false;
+  }
+};
+
+const confirmLeaveGroup = () => {
+  ElMessageBox.confirm(
+    '确定要退出该群组吗？',
+    '退出群组',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    emit('leave', props.groupId);
+    visible.value = false;
+  }).catch(() => {});
+};
+
+const confirmDismissGroup = () => {
+  ElMessageBox.confirm(
+    '解散群组后将无法恢复，确定要解散该群组吗？',
+    '解散群组',
+    {
+      confirmButtonText: '确定解散',
+      cancelButtonText: '取消',
+      type: 'error',
+      confirmButtonClass: 'el-button--danger'
+    }
+  ).then(() => {
+    ElMessage.info('解散群组功能开发中...');
+    // TODO: 调用API解散群组
+  }).catch(() => {});
+};
+
+// 监听对话框打开
+watch(visible, (newVal) => {
+  if (newVal && props.groupId) {
+    activeTab.value = 'members';
+    memberSearchKeyword.value = '';
+    messageSearchKeyword.value = '';
+    mediaFilter.value = 'all';
+    if (groupInfo.value) {
+      editForm.value.name = groupInfo.value.name;
+      editForm.value.description = groupInfo.value.description || '';
+      editForm.value.avatar = groupInfo.value.avatar || '';
+    }
+  }
+});
+</script>
+
 <template>
   <el-dialog
     v-model="visible"
@@ -295,499 +794,6 @@
   </el-dialog>
 </template>
 
-<script setup>
-import { ref, computed, watch } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import {
-  UserFilled, Calendar, More, ChatDotRound, Star, Close, Delete,
-  RemoveFilled, Picture, Document, Search, Upload
-} from '@element-plus/icons-vue';
-import { groupStore } from '@/store/group';
-import { messageStore } from '@/store/message';
-import { useUserInfoStore } from '@/store/userInfo';
-import { updateGroupInfoService } from '@/api/group';
-import { ossClient } from '@/util/oss';
-import ImageViewer from './ImageViewer.vue';
-
-// Props
-const props = defineProps({
-  modelValue: {
-    type: Boolean,
-    default: false
-  },
-  groupId: {
-    type: [String, Number],
-    required: false,
-    default: null
-  }
-});
-
-// Emits
-const emit = defineEmits(['update:modelValue', 'close', 'sendMessage', 'leave']);
-
-// Store
-const gStore = groupStore();
-const msgStore = messageStore();
-const userInfoStore = useUserInfoStore();
-
-// 响应式数据
-const visible = computed({
-  get: () => props.modelValue,
-  set: (val) => emit('update:modelValue', val)
-});
-
-const activeTab = ref('members');
-const memberSearchKeyword = ref('');
-const messageSearchKeyword = ref('');
-const mediaFilter = ref('all');
-const loadingMessages = ref(false);
-const loadingMedia = ref(false);
-const updatingGroup = ref(false);
-const uploadingAvatar = ref(false);
-
-// 图片查看器
-const imageViewerVisible = ref(false);
-const currentImageList = ref([]);
-const currentImageIndex = ref(0);
-
-const editGroupFormRef = ref(null);
-const editForm = ref({
-  name: '',
-  description: '',
-  avatar: ''
-});
-
-const editGroupRules = {
-  name: [
-    { required: true, message: '请输入群组名称', trigger: 'blur' },
-    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
-  ],
-  description: [
-    { max: 100, message: '最多100个字符', trigger: 'blur' }
-  ]
-};
-
-// 当前用户ID
-const currentUserId = computed(() => userInfoStore.userId);
-
-// 群组信息
-const groupInfo = computed(() => {
-  return gStore.allGroups.find(g => g.id === props.groupId);
-});
-// 群组成员
-const groupMembers = computed(() => {
-  return groupInfo.value?.members || [];
-});
-
-// 过滤后的成员
-const filteredMembers = computed(() => {
-  if (!memberSearchKeyword.value) return groupMembers.value;
-  
-  const keyword = memberSearchKeyword.value.toLowerCase();
-  return groupMembers.value.filter(member => {
-    return (member.username && member.username.toLowerCase().includes(keyword));
-  });
-});
-
-// 聊天记录
-const messages = computed(() => {
-  if (!props.groupId) return [];
-  
-  return msgStore.messages.filter(msg => {
-    // 过滤出该群组的所有消息
-    return msg.groupId === props.groupId;
-  }).sort((a, b) => {
-    const timeA = new Date(a.sentAt).getTime();
-    const timeB = new Date(b.sentAt).getTime();
-    return timeB - timeA;
-  });
-});
-
-// 过滤后的消息
-const filteredMessages = computed(() => {
-  if (!messageSearchKeyword.value) return messages.value;
-  
-  const keyword = messageSearchKeyword.value.toLowerCase();
-  return messages.value.filter(msg => {
-    if (msg.messageType === 'TEXT') {
-      return msg.content.toLowerCase().includes(keyword);
-    }
-    return false;
-  });
-});
-
-// 媒体文件
-const mediaMessages = computed(() => {
-  return messages.value.filter(msg => 
-    msg.messageType === 'IMAGE' || msg.messageType === 'FILE'
-  );
-});
-
-// 过滤后的媒体文件
-const filteredMedia = computed(() => {
-  if (mediaFilter.value === 'all') return mediaMessages.value;
-  if (mediaFilter.value === 'image') {
-    return mediaMessages.value.filter(msg => msg.messageType === 'IMAGE');
-  }
-  if (mediaFilter.value === 'file') {
-    return mediaMessages.value.filter(msg => msg.messageType === 'FILE');
-  }
-  return mediaMessages.value;
-});
-
-// 图片预览列表
-const imagePreviewList = computed(() => {
-  return mediaMessages.value
-    .filter(msg => msg.messageType === 'IMAGE')
-    .map(msg => msg.content);
-});
-
-// 判断当前用户是否为管理员
-const isCurrentUserAdmin = computed(() => {
-  if (!groupInfo.value) return false;
-  
-  // 群主肯定是管理员
-  if (groupInfo.value.ownerId === currentUserId.value) return true;
-  
-  // 检查是否在管理员列表中
-  return groupInfo.value.adminIds?.includes(currentUserId.value) || false;
-});
-
-// 方法
-const getInitials = (name) => {
-  if (!name) return '?';
-  return name.substring(0, 2).toUpperCase();
-};
-
-const formatDate = (date) => {
-  if (!date) return '';
-  return new Date(date).toLocaleDateString('zh-CN', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-};
-
-const formatDateTime = (date) => {
-  if (!date) return '';
-  return new Date(date).toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
-};
-
-const formatJoinTime = (date) => {
-  if (!date) return '';
-  const joinDate = new Date(date);
-  const now = new Date();
-  const diffTime = now - joinDate;
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-  
-  if (diffDays === 0) {
-    return '今天';
-  } else if (diffDays === 1) {
-    return '昨天';
-  } else if (diffDays < 7) {
-    return `${diffDays}天前`;
-  } else if (diffDays < 30) {
-    const weeks = Math.floor(diffDays / 7);
-    return `${weeks}周前`;
-  } else if (diffDays < 365) {
-    const months = Math.floor(diffDays / 30);
-    return `${months}个月前`;
-  } else {
-    const years = Math.floor(diffDays / 365);
-    return `${years}年前`;
-  }
-};
-
-const isGroupOwner = (userId) => {
-  return groupInfo.value?.ownerId === userId;
-};
-
-const isGroupAdmin = (userId) => {
-  return groupInfo.value?.adminIds?.includes(userId) || false;
-};
-
-const isUserOnline = (userId) => {
-  // TODO: 实现真实的在线状态
-  return Math.random() > 0.5;
-};
-
-const getSenderName = (message) => {
-  if (message.senderId === currentUserId.value) return '我';
-  
-  const sender = groupMembers.value.find(m => m.id === message.senderId);
-  return sender?.username || '未知用户';
-};
-
-const getFileName = (url) => {
-  if (!url) return '未知文件';
-  try {
-    const urlObj = new URL(url);
-    const pathParts = urlObj.pathname.split('/');
-    return decodeURIComponent(pathParts[pathParts.length - 1]);
-  } catch (e) {
-    const parts = url.split('/');
-    return parts[parts.length - 1];
-  }
-};
-
-// 权限判断
-const canManageMember = (memberId) => {
-  // 不能操作自己
-  if (memberId === currentUserId.value) return false;
-  // 只有管理员可以操作
-  return isCurrentUserAdmin.value;
-};
-
-const canSetAdmin = (memberId) => {
-  // 只有群主可以设置管理员，且目标不是已有的管理员
-  return isGroupOwner(currentUserId.value) && 
-         !isGroupOwner(memberId) && 
-         !isGroupAdmin(memberId);
-};
-
-const canRemoveAdmin = (memberId) => {
-  // 只有群主可以取消管理员
-  return isGroupOwner(currentUserId.value) && isGroupAdmin(memberId);
-};
-
-const canRemoveMember = (memberId) => {
-  // 群主可以移除任何人（除了自己），管理员只能移除普通成员
-  if (memberId === currentUserId.value) return false;
-  
-  if (isGroupOwner(currentUserId.value)) {
-    return true;
-  } else if (isGroupAdmin(currentUserId.value)) {
-    return !isGroupOwner(memberId) && !isGroupAdmin(memberId);
-  }
-  return false;
-};
-
-// 操作方法
-const handleClose = () => {
-  emit('close');
-};
-
-const sendPrivateMessage = (member) => {
-  emit('sendMessage', member);
-  visible.value = false;
-};
-
-const setAsAdmin = (memberId) => {
-  ElMessageBox.confirm(
-    '确定要将该成员设为管理员吗？',
-    '设置管理员',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'info',
-    }
-  ).then(() => {
-    ElMessage.info('设置管理员功能开发中...');
-    // TODO: 调用API设置管理员
-  }).catch(() => {});
-};
-
-const removeAdmin = (memberId) => {
-  ElMessageBox.confirm(
-    '确定要取消该成员的管理员身份吗？',
-    '取消管理员',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    ElMessage.info('取消管理员功能开发中...');
-    // TODO: 调用API取消管理员
-  }).catch(() => {});
-};
-
-const confirmRemoveMember = (member) => {
-  ElMessageBox.confirm(
-    `确定要将 ${member.username} 移出群组吗？`,
-    '移出成员',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    ElMessage.info('移出成员功能开发中...');
-    // TODO: 调用API移出成员
-  }).catch(() => {});
-};
-
-const locateMessage = (message) => {
-  ElMessage.info('定位到消息功能开发中...');
-  // TODO: 实现跳转到指定消息
-};
-
-const viewMedia = (item) => {
-  if (item.messageType === 'FILE') {
-    window.open(item.content, '_blank');
-  } else if (item.messageType === 'IMAGE') {
-    openImageViewer(item.content);
-  }
-};
-
-// 打开图片查看器
-const openImageViewer = (imageUrl) => {
-  // 收集所有图片消息的URL
-  const imageMessages = mediaMessages.value.filter(msg => msg.messageType === 'IMAGE');
-  currentImageList.value = imageMessages.map(msg => msg.content);
-  
-  // 找到当前图片的索引
-  currentImageIndex.value = currentImageList.value.findIndex(url => url === imageUrl);
-  if (currentImageIndex.value === -1) {
-    currentImageIndex.value = 0;
-  }
-  
-  imageViewerVisible.value = true;
-};
-
-const beforeAvatarUpload = (file) => {
-  const isImage = file.type.startsWith('image/');
-  const isLt5M = file.size / 1024 / 1024 < 5;
-
-  if (!isImage) {
-    ElMessage.error('只能上传图片文件!');
-    return false;
-  }
-  if (!isLt5M) {
-    ElMessage.error('图片大小不能超过 5MB!');
-    return false;
-  }
-  return true;
-};
-
-const handleAvatarUpload = async (options) => {
-  const { file } = options;
-  
-  uploadingAvatar.value = true;
-  
-  try {
-    // 初始化 OSS 客户端
-    if (!ossClient.client) {
-      await ossClient.init();
-    }
-    
-    // 生成文件名
-    const extension = file.name.split('.').pop();
-    const fileName = ossClient.generateFileName(extension);
-    
-    // 上传文件
-    await ossClient.uploadFile(fileName, file);
-    
-    // 生成文件 URL
-    const avatarUrl = ossClient.generateFileUrl(fileName);
-    
-    // 更新表单中的头像字段
-    editForm.value.avatar = avatarUrl;
-    
-    ElMessage.success('头像上传成功');
-  } catch (error) {
-    console.error('头像上传失败:', error);
-    ElMessage.error('头像上传失败');
-  } finally {
-    uploadingAvatar.value = false;
-  }
-};
-
-const saveGroupSettings = async () => {
-  if (!editGroupFormRef.value) return;
-  
-  try {
-    await editGroupFormRef.value.validate();
-    
-    updatingGroup.value = true;
-    
-    // 构建更新数据对象
-    const updateData = {
-      id: props.groupId
-    };
-    
-    // 只添加修改过的字段
-    if (editForm.value.name !== groupInfo.value.name) {
-      updateData.name = editForm.value.name;
-    }
-    if (editForm.value.description !== groupInfo.value.description) {
-      updateData.description = editForm.value.description;
-    }
-    if (editForm.value.avatar && editForm.value.avatar !== groupInfo.value.avatar) {
-      updateData.avatar = editForm.value.avatar;
-    }
-    
-    // 如果没有任何修改，直接返回
-    if (Object.keys(updateData).length === 1) {
-      ElMessage.info('没有修改任何内容');
-      updatingGroup.value = false;
-      return;
-    }
-    
-    // 调用 store 方法更新群组信息
-    await gStore.updateGroupInfo(updateData);
-    
-    ElMessage.success('保存成功');
-    
-  } catch (error) {
-    console.error('保存群组设置失败:', error);
-    ElMessage.error('保存失败');
-  } finally {
-    updatingGroup.value = false;
-  }
-};
-
-const confirmLeaveGroup = () => {
-  ElMessageBox.confirm(
-    '确定要退出该群组吗？',
-    '退出群组',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    emit('leave', props.groupId);
-    visible.value = false;
-  }).catch(() => {});
-};
-
-const confirmDismissGroup = () => {
-  ElMessageBox.confirm(
-    '解散群组后将无法恢复，确定要解散该群组吗？',
-    '解散群组',
-    {
-      confirmButtonText: '确定解散',
-      cancelButtonText: '取消',
-      type: 'error',
-      confirmButtonClass: 'el-button--danger'
-    }
-  ).then(() => {
-    ElMessage.info('解散群组功能开发中...');
-    // TODO: 调用API解散群组
-  }).catch(() => {});
-};
-
-// 监听对话框打开
-watch(visible, (newVal) => {
-  if (newVal && props.groupId) {
-    activeTab.value = 'members';
-    memberSearchKeyword.value = '';
-    messageSearchKeyword.value = '';
-    mediaFilter.value = 'all';
-    if (groupInfo.value) {
-      editForm.value.name = groupInfo.value.name;
-      editForm.value.description = groupInfo.value.description || '';
-      editForm.value.avatar = groupInfo.value.avatar || '';
-    }
-  }
-});
-</script>
 
 <style scoped>
 .group-info-container {
