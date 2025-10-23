@@ -1,29 +1,3 @@
-<template>
-  <teleport to="body">
-    <div
-      v-if="visible"
-      class="context-menu"
-      :style="menuStyle"
-      @click.stop="handleMenuClick"
-    >
-      <template v-for="(item, index) in menuItems" :key="index">
-        <div
-          v-if="!item.hidden"
-          class="context-menu-item"
-          :class="{ danger: item.danger, disabled: item.disabled }"
-          @click="handleItemClick(item)"
-        >
-          <el-icon v-if="item.icon">
-            <component :is="item.icon" />
-          </el-icon>
-          <span>{{ item.label }}</span>
-        </div>
-        <div v-if="item.divider && index < menuItems.length - 1" class="context-menu-divider"></div>
-      </template>
-    </div>
-  </teleport>
-</template>
-
 <script setup>
 import { computed, watch, onMounted, onUnmounted } from 'vue';
 
@@ -132,6 +106,34 @@ onUnmounted(() => {
   document.removeEventListener('contextmenu', handleClickOutside);
 });
 </script>
+
+
+<template>
+  <teleport to="body">
+    <div
+      v-if="visible"
+      class="context-menu"
+      :style="menuStyle"
+      @click.stop="handleMenuClick"
+    >
+      <template v-for="(item, index) in menuItems" :key="index">
+        <div
+          v-if="!item.hidden"
+          class="context-menu-item"
+          :class="{ danger: item.danger, disabled: item.disabled }"
+          @click="handleItemClick(item)"
+        >
+          <el-icon v-if="item.icon">
+            <component :is="item.icon" />
+          </el-icon>
+          <span>{{ item.label }}</span>
+        </div>
+        <div v-if="item.divider && index < menuItems.length - 1" class="context-menu-divider"></div>
+      </template>
+    </div>
+  </teleport>
+</template>
+
 
 <style scoped>
 .context-menu {

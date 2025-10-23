@@ -1,438 +1,3 @@
-<template>
-  <div class="chat-window" v-loading="loading">
-    <div v-if="currentChat" class="chat-window-content">
-      <!-- 聊天标题 -->
-      <div class="chat-header">
-        <!-- 移动端返回按钮 -->
-        <button 
-          v-if="isMobile && mobileView === 'chat'"
-          class="mobile-back-btn"
-          @click="backToList"
-          aria-label="返回列表"
-        >
-          <el-icon><ArrowLeft /></el-icon>
-        </button>
-        
-        <div class="chat-title">
-          <div class="title-container">
-            <el-avatar :size="36" :src="chatAvatar" class="chat-avatar">
-              {{ chatInitials }}
-            </el-avatar>
-            <div class="title-info">
-              <h3>{{ chatTitle }}</h3>
-              <span v-if="currentChat.type === 'group'" class="chat-subtitle">
-                {{ groupMembers.length }}人
-              </span>
-              <span v-else class="chat-status" :class="{ 'online': isUserOnline }">
-                {{ isUserOnline ? '在线' : '离线' }}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="chat-actions">
-          <el-tooltip content="搜索消息" placement="bottom" :disabled="isMobile">
-            <el-icon class="action-icon" @click="openSearchDialog"><Search /></el-icon>
-          </el-tooltip>
-          <el-dropdown trigger="click">
-            <el-icon class="more-icon"><More /></el-icon>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="showChatInfo">
-                  <el-icon><InfoFilled /></el-icon> 查看信息
-                </el-dropdown-item>
-                <el-dropdown-item v-if="currentChat.type === 'group'" @click="leaveGroup">
-                  <el-icon><RemoveFilled /></el-icon> 退出群组
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </div>
-      
-      <!-- 聊天消息列表 -->
-      <div class="chat-messages" ref="messagesContainerRef">
-        <transition-group name="fade-slide" tag="div">
-          <div v-if="messages.length === 0" key="empty" class="empty-messages">
-            <el-empty description="暂无消息">
-              <template #image>
-                <div class="empty-illustration">
-                  <el-icon class="empty-icon"><ChatDotRound /></el-icon>
-                  <div class="empty-hint">开始对话吧</div>
-                </div>
-              </template>
-            </el-empty>
-          </div>
-          
-          <template v-else>
-            <div
-              v-for="(message, index) in messages"
-              :key="message.id"
-              :data-message-id="message.id"
-              class="message-container"
-              :class="{ 
-                'own-message': isOwnMessage(message),
-                'first-of-group': isFirstMessageOfGroup(message, index),
-                'last-of-group': isLastMessageOfGroup(message, index)
-              }"
-              @contextmenu.prevent="handleMessageContextMenu($event, message)"
-              @touchstart="handleTouchStart($event, message)"
-              @touchend="handleTouchEnd"
-              @touchmove="handleTouchMove"
-            >
-              <!-- 显示日期分隔符 -->
-              <div 
-                v-if="shouldShowDateDivider(message, index)"
-                class="date-divider"
-              >
-                <div class="date-line">
-                  <span class="date-text">{{ formatDate(message.sentAt) }}</span>
-                </div>
-              </div>
-              
-              <div class="message-wrapper">
-                <!-- 他人消息布局：头像 - 内容区(消息+时间) -->
-                <template v-if="!isOwnMessage(message)">
-                  <el-avatar 
-                    :size="40" 
-                    :src="getSenderAvatar(message)"
-                    class="message-avatar left-avatar"
-                    :class="{ 'invisible-avatar': !isLastMessageOfGroup(message, index) }"
-                  >
-                    {{ getSenderInitials(message) }}
-                  </el-avatar>
-                  
-                  <div class="message-content">
-                    <!-- 发送者名称 (群聊中) -->
-                    <div 
-                      v-if="currentChat.type === 'group' && isFirstMessageOfGroup(message, index)" 
-                      class="message-sender"
-                    >
-                      {{ getSenderName(message) }}
-                    </div>
-                    
-                    <div class="message-row">
-                      <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
-                        <!-- 根据消息类型显示内容 -->
-                        <template v-if="message.messageType === 'TEXT'">
-                          <div class="text-message">{{ message.content }}</div>
-                        </template>
-                        <template v-else-if="message.messageType === 'IMAGE'">
-                          <div class="image-message" @dblclick="openImageViewer(message.content)">
-                            <el-image 
-                              :src="message.content" 
-                              fit="cover"
-                              loading="lazy"
-                              class="message-image"
-                            >
-                              <template #placeholder>
-                                <div class="image-loading">
-                                  <el-icon class="is-loading"><Loading /></el-icon>
-                                </div>
-                              </template>
-                              <template #error>
-                                <div class="image-error">
-                                  <el-icon><Picture /></el-icon>
-                                  <span>图片加载失败</span>
-                                </div>
-                              </template>
-                            </el-image>
-                          </div>
-                        </template>
-                        <template v-else-if="message.messageType === 'FILE'">
-                          <div class="file-message">
-                            <div class="file-icon">
-                              <el-icon><Document /></el-icon>
-                            </div>
-                            <div class="file-info">
-                              <div class="file-name">{{ getFileName(message.content) }}</div>
-                              <div class="file-actions">
-                                <el-button size="small" type="primary" plain @click="downloadFile(message.content)">
-                                  <el-icon><Download /></el-icon> 下载
-                                </el-button>
-                              </div>
-                            </div>
-                          </div>
-                        </template>
-                      </div>
-                      
-                      <!-- 时间 -->
-                      <div class="message-meta">
-                        <span class="message-time">{{ formatTime(message.sentAt) }}</span>
-                      </div>
-                    </div>
-                  </div>
-                </template>
-                
-                <!-- 自己消息布局：内容区(时间+消息) - 头像 -->
-                <template v-else>
-                  <div class="message-content">
-                    <div class="message-row">
-                      <!-- 时间和状态 -->
-                      <div class="message-meta">
-                        <span class="message-status">
-                          <el-icon v-if="message.status === 'sending'" class="status-icon is-loading"><Loading /></el-icon>
-                          <el-icon v-else-if="message.status === 'failed'" class="status-icon status-failed"><Warning /></el-icon>
-                          <el-icon v-else-if="message.status === 'sent'" class="status-icon"><Check /></el-icon>
-                          <el-icon v-else-if="message.status === 'delivered'" class="status-icon status-delivered"><CircleCheck /></el-icon>
-                          <el-icon v-else-if="message.status === 'read'" class="status-icon status-read"><CircleCheck /></el-icon>
-                        </span>
-                        <span class="message-time">{{ formatTime(message.sentAt) }}</span>
-                      </div>
-                      
-                      <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
-                        <!-- 根据消息类型显示内容 -->
-                        <template v-if="message.messageType === 'TEXT'">
-                          <div class="text-message">{{ message.content }}</div>
-                        </template>
-                        <template v-else-if="message.messageType === 'IMAGE'">
-                          <div class="image-message" @dblclick="openImageViewer(message.content)">
-                            <el-image 
-                              :src="message.content" 
-                              fit="cover"
-                              loading="lazy"
-                              class="message-image"
-                            >
-                              <template #placeholder>
-                                <div class="image-loading">
-                                  <el-icon class="is-loading"><Loading /></el-icon>
-                                </div>
-                              </template>
-                              <template #error>
-                                <div class="image-error">
-                                  <el-icon><Picture /></el-icon>
-                                  <span>图片加载失败</span>
-                                </div>
-                              </template>
-                            </el-image>
-                          </div>
-                        </template>
-                        <template v-else-if="message.messageType === 'FILE'">
-                          <div class="file-message">
-                            <div class="file-icon">
-                              <el-icon><Document /></el-icon>
-                            </div>
-                            <div class="file-info">
-                              <div class="file-name">{{ getFileName(message.content) }}</div>
-                              <div class="file-actions">
-                                <el-button size="small" type="primary" plain @click="downloadFile(message.content)">
-                                  <el-icon><Download /></el-icon> 下载
-                                </el-button>
-                              </div>
-                            </div>
-                          </div>
-                        </template>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <el-avatar 
-                    :size="40" 
-                    :src="userAvatar"
-                    class="message-avatar right-avatar"
-                    :class="{ 'invisible-avatar': !isLastMessageOfGroup(message, index) }"
-                  >
-                    {{ userInitials }}
-                  </el-avatar>
-                </template>
-              </div>
-            </div>
-          </template>
-        </transition-group>
-      </div>
-      
-      <!-- 消息输入框 -->
-      <div class="chat-input">
-        <!-- 工具栏 -->
-        <div class="input-toolbar">
-          <div class="toolbar-left">
-            <el-popover
-              placement="top-start"
-              :width="isMobile ? 'auto' : 340"
-              trigger="click"
-              :teleported="true"
-              popper-class="emoji-popover"
-            >
-              <template #reference>
-                <div class="toolbar-icon emoji-button" title="表情">😊</div>
-              </template>
-              <div class="emoji-picker">
-                <div v-for="emoji in emojiList" :key="emoji" class="emoji-item" @click="insertEmoji(emoji)">
-                  {{ emoji }}
-                </div>
-              </div>
-            </el-popover>
-            <el-tooltip content="发送图片" placement="top" :disabled="isMobile">
-              <el-icon class="toolbar-icon" @click="triggerImageUpload"><Picture /></el-icon>
-            </el-tooltip>
-            <el-tooltip content="发送文件" placement="top" :disabled="isMobile">
-              <el-icon class="toolbar-icon" @click="triggerFileUpload"><FolderOpened /></el-icon>
-            </el-tooltip>
-          </div>
-          
-          <input
-            type="file"
-            ref="imageInputRef"
-            accept="image/*"
-            style="display: none"
-            @change="handleImageUpload"
-          />
-          <input
-            type="file"
-            ref="fileInputRef"
-            style="display: none"
-            @change="handleFileUpload"
-          />
-        </div>
-        
-        <!-- 文本区域 -->
-        <div class="input-container">
-          <div class="textarea-wrapper" :class="{ 'focused': isInputFocused }">
-            <el-input
-              v-model="messageInput"
-              type="textarea"
-              :rows="1"
-              :autosize="{ minRows: 1, maxRows: 1 }"
-              resize="none"
-              placeholder="输入消息..."
-              @keydown.enter.exact.prevent="sendMessage"
-              @keydown.shift.enter.prevent="handleShiftEnter"
-              @focus="isInputFocused = true"
-              @blur="isInputFocused = false"
-              ref="messageInputRef"
-              class="message-textarea"
-            />
-          </div>
-          <div class="input-actions">
-            <el-tooltip content="发送消息" placement="top" :disabled="isMobile">
-              <el-button
-                type="primary"
-                class="send-button"
-                :disabled="!messageInput.trim()"
-                @click="sendMessage"
-                :loading="sendLoading"
-              >
-                发送
-              </el-button>
-            </el-tooltip>
-          </div>
-        </div>
-      </div>
-    </div>
-    
-    <div v-else class="empty-chat">
-      <el-empty description="选择一个聊天开始会话">
-        <template #image>
-          <el-icon class="empty-icon"><ChatDotRound /></el-icon>
-        </template>
-      </el-empty>
-    </div>
-
-    <!-- 好友信息对话框 -->
-    <FriendInfoDialog
-      v-model="friendInfoDialogVisible"
-      :friend-id="currentChat?.type === 'friend' ? currentChat.id : null"
-      @close="friendInfoDialogVisible = false"
-      @startChat="handleStartChat"
-      @delete="handleDeleteFriend"
-    />
-
-    <!-- 群组信息对话框 -->
-    <GroupInfoDialog
-      v-model="groupInfoDialogVisible"
-      :group-id="currentChat?.type === 'group' ? currentChat.id : null"
-      @close="groupInfoDialogVisible = false"
-      @sendMessage="handleSendPrivateMessage"
-      @leave="handleLeaveGroup"
-    />
-
-    <!-- 图片查看器 -->
-    <ImageViewer
-      v-model:visible="imageViewerVisible"
-      :image-list="currentImageList"
-      :initial-index="currentImageIndex"
-    />
-
-    <!-- 消息右键菜单 -->
-    <ContextMenu
-      v-model:visible="messageContextMenuVisible"
-      :position="messageContextMenuPosition"
-      :menu-items="messageMenuItems"
-      @select="handleMessageMenuSelect"
-    />
-
-    <!-- 搜索消息对话框 -->
-    <el-dialog
-      v-model="searchDialogVisible"
-      title="搜索消息"
-      width="600px"
-      :close-on-click-modal="false"
-      class="search-dialog"
-    >
-      <div class="search-content">
-        <div class="search-input-wrapper">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="输入关键词搜索消息"
-            clearable
-            @keyup.enter="handleSearch"
-            @clear="clearSearch"
-            class="search-input"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
-          
-          <el-button type="primary" @click="handleSearch" :loading="searchLoading" class="search-button">
-            搜索
-          </el-button>
-        </div>
-        
-        <el-divider />
-        
-        <div v-loading="searchLoading" class="search-results">
-          <div v-if="searchResults.length === 0 && searchKeyword" class="no-results">
-            <el-empty description="未找到相关消息" />
-          </div>
-          
-          <div v-else-if="searchResults.length === 0" class="search-tips">
-            <el-icon class="tips-icon"><Search /></el-icon>
-            <p>输入关键词搜索聊天消息</p>
-            <ul>
-              <li>支持搜索文本消息内容</li>
-              <li>支持按发送者筛选</li>
-              <li>点击搜索结果可定位到消息</li>
-            </ul>
-          </div>
-          
-          <div v-else class="results-list">
-            <div class="results-count">找到 {{ searchResults.length }} 条相关消息</div>
-            <div
-              v-for="result in searchResults"
-              :key="result.id"
-              class="result-item"
-              @click="scrollToMessage(result)"
-            >
-              <div class="result-header">
-                <el-avatar :size="36" :src="getSenderAvatar(result)">
-                  {{ getSenderInitials(result) }}
-                </el-avatar>
-                <div class="result-info">
-                  <div class="result-sender">{{ getSenderName(result) }}</div>
-                  <div class="result-time">{{ formatFullTime(result.sentAt) }}</div>
-                </div>
-              </div>
-              <div class="result-content">
-                <span v-html="highlightKeyword(result.content)"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -445,6 +10,7 @@ import { messageStore } from '@/store/message';
 import { conversationStore } from '@/store/conversation';
 import { friendshipStore } from '@/store/friendship';
 import { groupStore } from '@/store/group';
+import { onlineStatusStore } from '@/store/onlineStatus';
 import { useUserInfoStore } from '@/store/userInfo';
 import { ossClient } from '@/util/oss';
 import FriendInfoDialog from './FriendInfoDialog.vue';
@@ -469,6 +35,7 @@ const msgStore = messageStore();
 const convStore = conversationStore();
 const friendStore = friendshipStore();
 const gStore = groupStore();
+const onlineStore = onlineStatusStore();
 const userInfoStore = useUserInfoStore();
 
 // DOM引用
@@ -615,11 +182,12 @@ const chatInitials = computed(() => {
   return getInitials(chatTitle.value);
 });
 
-// 模拟用户在线状态
+// 用户在线状态
 const isUserOnline = computed(() => {
-  // 这里应该根据实际的在线状态逻辑来实现
-  // 暂时返回随机值模拟
-  return Math.random() > 0.5;
+  if (!currentChat.value || chatType.value !== 'friend') {
+    return false;
+  }
+  return onlineStore.isUserOnline(currentChat.value.id);
 });
 
 // 获取当前聊天的好友信息
@@ -652,12 +220,13 @@ watch(messages, () => {
 }, { deep: true });
 
 // 监听当前聊天变化
-watch(currentChat, (newChat) => {
+watch(currentChat, (newChat, oldChat) => {
   messageInput.value = '';
   
-  // 清空该会话的未读消息数
-  if (newChat && chatType.value) {
-    convStore.clearUnreadCount(newChat.id, chatType.value);
+  // 清空该会话的未读消息数(只在聊天对象变化时调用一次)
+  // 跳过 API 调用，因为 ChatSidebar 中的 selectChat 已经调用过了
+  if (newChat && chatType.value && (!oldChat || oldChat.id !== newChat.id || oldChat.type !== chatType.value)) {
+    convStore.clearUnreadCount(newChat.id, chatType.value, true);
   }
   
   nextTick(scrollToBottom);
@@ -748,7 +317,16 @@ const getSenderName = (message) => {
 const formatDate = (timestamp) => {
   if (!timestamp) return '';
   
-  const date = new Date(timestamp);
+  // 处理数组格式的日期 [year, month, day, hour, minute, second]
+  let date;
+  if (Array.isArray(timestamp)) {
+    // 月份需要减1，因为 JavaScript 的月份从0开始
+    date = new Date(timestamp[0], timestamp[1] - 1, timestamp[2], 
+                    timestamp[3] || 0, timestamp[4] || 0, timestamp[5] || 0);
+  } else {
+    date = new Date(timestamp);
+  }
+  
   if (isNaN(date.getTime())) {
     console.warn('无效的日期格式:', timestamp);
     return timestamp; // 返回原始值，防止显示'Invalid Date'
@@ -780,8 +358,16 @@ const formatDate = (timestamp) => {
 const formatTime = (timestamp) => {
   if (!timestamp) return '';
   
-  // 处理日期时间格式
-  const date = new Date(timestamp);
+  // 处理数组格式的日期 [year, month, day, hour, minute, second]
+  let date;
+  if (Array.isArray(timestamp)) {
+    // 月份需要减1，因为 JavaScript 的月份从0开始
+    date = new Date(timestamp[0], timestamp[1] - 1, timestamp[2], 
+                    timestamp[3] || 0, timestamp[4] || 0, timestamp[5] || 0);
+  } else {
+    date = new Date(timestamp);
+  }
+  
   if (isNaN(date.getTime())) {
     console.warn('无效的时间格式:', timestamp);
     return timestamp; // 返回原始值，防止显示'Invalid Date'
@@ -798,8 +384,17 @@ const formatTime = (timestamp) => {
 const shouldShowDateDivider = (message, index) => {
   if (index === 0) return true;
   
-  const currentDate = new Date(message.sentAt);
-  const prevDate = new Date(messages.value[index - 1].sentAt);
+  // 处理数组格式的日期
+  const convertToDate = (timestamp) => {
+    if (Array.isArray(timestamp)) {
+      return new Date(timestamp[0], timestamp[1] - 1, timestamp[2], 
+                      timestamp[3] || 0, timestamp[4] || 0, timestamp[5] || 0);
+    }
+    return new Date(timestamp);
+  };
+  
+  const currentDate = convertToDate(message.sentAt);
+  const prevDate = convertToDate(messages.value[index - 1].sentAt);
   
   // 确保日期有效
   if (isNaN(currentDate.getTime()) || isNaN(prevDate.getTime())) {
@@ -823,8 +418,17 @@ const isFirstMessageOfGroup = (message, index) => {
   // 不同发送者或时间间隔超过2分钟视为新的一组
   if (prevMessage.senderId !== message.senderId) return true;
   
-  const currentTime = new Date(message.sentAt).getTime();
-  const prevTime = new Date(prevMessage.sentAt).getTime();
+  // 处理数组格式的日期
+  const convertToDate = (timestamp) => {
+    if (Array.isArray(timestamp)) {
+      return new Date(timestamp[0], timestamp[1] - 1, timestamp[2], 
+                      timestamp[3] || 0, timestamp[4] || 0, timestamp[5] || 0);
+    }
+    return new Date(timestamp);
+  };
+  
+  const currentTime = convertToDate(message.sentAt).getTime();
+  const prevTime = convertToDate(prevMessage.sentAt).getTime();
   const timeDiff = currentTime - prevTime;
   
   return timeDiff > 2 * 60 * 1000; // 2分钟
@@ -839,8 +443,17 @@ const isLastMessageOfGroup = (message, index) => {
   // 不同发送者或时间间隔超过2分钟视为新的一组
   if (nextMessage.senderId !== message.senderId) return true;
   
-  const currentTime = new Date(message.sentAt).getTime();
-  const nextTime = new Date(nextMessage.sentAt).getTime();
+  // 处理数组格式的日期
+  const convertToDate = (timestamp) => {
+    if (Array.isArray(timestamp)) {
+      return new Date(timestamp[0], timestamp[1] - 1, timestamp[2], 
+                      timestamp[3] || 0, timestamp[4] || 0, timestamp[5] || 0);
+    }
+    return new Date(timestamp);
+  };
+  
+  const currentTime = convertToDate(message.sentAt).getTime();
+  const nextTime = convertToDate(nextMessage.sentAt).getTime();
   const timeDiff = nextTime - currentTime;
   
   return timeDiff > 2 * 60 * 1000; // 2分钟
@@ -1179,7 +792,15 @@ const scrollToMessage = (message) => {
 const formatFullTime = (timestamp) => {
   if (!timestamp) return '';
   
-  const date = new Date(timestamp);
+  // 处理数组格式的日期
+  let date;
+  if (Array.isArray(timestamp)) {
+    date = new Date(timestamp[0], timestamp[1] - 1, timestamp[2], 
+                    timestamp[3] || 0, timestamp[4] || 0, timestamp[5] || 0);
+  } else {
+    date = new Date(timestamp);
+  }
+  
   if (isNaN(date.getTime())) {
     return timestamp;
   }
@@ -1426,6 +1047,440 @@ const deleteMessage = () => {
 };
 </script>
 
+<template>
+  <div class="chat-window" v-loading="loading">
+    <div v-if="currentChat" class="chat-window-content">
+      <!-- 聊天标题 -->
+      <div class="chat-header">
+        <!-- 移动端返回按钮 -->
+        <button 
+          v-if="isMobile && mobileView === 'chat'"
+          class="mobile-back-btn"
+          @click="backToList"
+          aria-label="返回列表"
+        >
+          <el-icon><ArrowLeft /></el-icon>
+        </button>
+        
+        <div class="chat-title">
+          <div class="title-container">
+            <el-avatar :size="36" :src="chatAvatar" class="chat-avatar">
+              {{ chatInitials }}
+            </el-avatar>
+            <div class="title-info">
+              <h3>{{ chatTitle }}</h3>
+              <span v-if="currentChat.type === 'group'" class="chat-subtitle">
+                {{ groupMembers.length }}人
+              </span>
+              <span v-else class="chat-status" :class="{ 'online': isUserOnline }">
+                {{ isUserOnline ? '在线' : '离线' }}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div class="chat-actions">
+          <el-tooltip content="搜索消息" placement="bottom" :disabled="isMobile">
+            <el-icon class="action-icon" @click="openSearchDialog"><Search /></el-icon>
+          </el-tooltip>
+          <el-dropdown trigger="click">
+            <el-icon class="more-icon"><More /></el-icon>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="showChatInfo">
+                  <el-icon><InfoFilled /></el-icon> 查看信息
+                </el-dropdown-item>
+                <el-dropdown-item v-if="currentChat.type === 'group'" @click="leaveGroup">
+                  <el-icon><RemoveFilled /></el-icon> 退出群组
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </div>
+      
+      <!-- 聊天消息列表 -->
+      <div class="chat-messages" ref="messagesContainerRef">
+        <transition-group name="fade-slide" tag="div">
+          <div v-if="messages.length === 0" key="empty" class="empty-messages">
+            <el-empty description="暂无消息">
+              <template #image>
+                <div class="empty-illustration">
+                  <el-icon class="empty-icon"><ChatDotRound /></el-icon>
+                  <div class="empty-hint">开始对话吧</div>
+                </div>
+              </template>
+            </el-empty>
+          </div>
+          
+          <template v-else>
+            <div
+              v-for="(message, index) in messages"
+              :key="message.id"
+              :data-message-id="message.id"
+              class="message-container"
+              :class="{ 
+                'own-message': isOwnMessage(message),
+                'first-of-group': isFirstMessageOfGroup(message, index),
+                'last-of-group': isLastMessageOfGroup(message, index)
+              }"
+              @contextmenu.prevent="handleMessageContextMenu($event, message)"
+              @touchstart="handleTouchStart($event, message)"
+              @touchend="handleTouchEnd"
+              @touchmove="handleTouchMove"
+            >
+              <!-- 显示日期分隔符 -->
+              <div 
+                v-if="shouldShowDateDivider(message, index)"
+                class="date-divider"
+              >
+                <div class="date-line">
+                  <span class="date-text">{{ formatDate(message.sentAt) }}</span>
+                </div>
+              </div>
+              
+              <div class="message-wrapper">
+                <!-- 他人消息布局：头像 - 内容区(消息+时间) -->
+                <template v-if="!isOwnMessage(message)">
+                  <el-avatar 
+                    :size="40" 
+                    :src="getSenderAvatar(message)"
+                    class="message-avatar left-avatar"
+                  >
+                    {{ getSenderInitials(message) }}
+                  </el-avatar>
+                  
+                  <div class="message-content">
+                    <!-- 发送者名称 (群聊中) -->
+                    <div 
+                      v-if="currentChat.type === 'group'" 
+                      class="message-sender"
+                    >
+                      {{ getSenderName(message) }}
+                    </div>
+                    
+                    <div class="message-row">
+                      <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
+                        <!-- 根据消息类型显示内容 -->
+                        <template v-if="message.messageType === 'TEXT'">
+                          <div class="text-message">{{ message.content }}</div>
+                        </template>
+                        <template v-else-if="message.messageType === 'IMAGE'">
+                          <div class="image-message" @dblclick="openImageViewer(message.content)">
+                            <el-image 
+                              :src="message.content" 
+                              fit="cover"
+                              loading="lazy"
+                              class="message-image"
+                            >
+                              <template #placeholder>
+                                <div class="image-loading">
+                                  <el-icon class="is-loading"><Loading /></el-icon>
+                                </div>
+                              </template>
+                              <template #error>
+                                <div class="image-error">
+                                  <el-icon><Picture /></el-icon>
+                                  <span>图片加载失败</span>
+                                </div>
+                              </template>
+                            </el-image>
+                          </div>
+                        </template>
+                        <template v-else-if="message.messageType === 'FILE'">
+                          <div class="file-message">
+                            <div class="file-icon">
+                              <el-icon><Document /></el-icon>
+                            </div>
+                            <div class="file-info">
+                              <div class="file-name">{{ getFileName(message.content) }}</div>
+                              <div class="file-actions">
+                                <el-button size="small" type="primary" plain @click="downloadFile(message.content)">
+                                  <el-icon><Download /></el-icon> 下载
+                                </el-button>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                      
+                      <!-- 时间 -->
+                      <div class="message-meta">
+                        <span class="message-time">{{ formatTime(message.sentAt) }}</span>
+                      </div>
+                    </div>
+                  </div>
+                </template>
+                
+                <!-- 自己消息布局：内容区(时间+消息) - 头像 -->
+                <template v-else>
+                  <div class="message-content">
+                    <div class="message-row">
+                      <!-- 时间和状态 -->
+                      <div class="message-meta">
+                        <span class="message-status">
+                          <el-icon v-if="message.status === 'sending'" class="status-icon is-loading"><Loading /></el-icon>
+                          <el-icon v-else-if="message.status === 'failed'" class="status-icon status-failed"><Warning /></el-icon>
+                          <el-icon v-else-if="message.status === 'sent'" class="status-icon"><Check /></el-icon>
+                          <el-icon v-else-if="message.status === 'delivered'" class="status-icon status-delivered"><CircleCheck /></el-icon>
+                          <el-icon v-else-if="message.status === 'read'" class="status-icon status-read"><CircleCheck /></el-icon>
+                        </span>
+                        <span class="message-time">{{ formatTime(message.sentAt) }}</span>
+                      </div>
+                      
+                      <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
+                        <!-- 根据消息类型显示内容 -->
+                        <template v-if="message.messageType === 'TEXT'">
+                          <div class="text-message">{{ message.content }}</div>
+                        </template>
+                        <template v-else-if="message.messageType === 'IMAGE'">
+                          <div class="image-message" @dblclick="openImageViewer(message.content)">
+                            <el-image 
+                              :src="message.content" 
+                              fit="cover"
+                              loading="lazy"
+                              class="message-image"
+                            >
+                              <template #placeholder>
+                                <div class="image-loading">
+                                  <el-icon class="is-loading"><Loading /></el-icon>
+                                </div>
+                              </template>
+                              <template #error>
+                                <div class="image-error">
+                                  <el-icon><Picture /></el-icon>
+                                  <span>图片加载失败</span>
+                                </div>
+                              </template>
+                            </el-image>
+                          </div>
+                        </template>
+                        <template v-else-if="message.messageType === 'FILE'">
+                          <div class="file-message">
+                            <div class="file-icon">
+                              <el-icon><Document /></el-icon>
+                            </div>
+                            <div class="file-info">
+                              <div class="file-name">{{ getFileName(message.content) }}</div>
+                              <div class="file-actions">
+                                <el-button size="small" type="primary" plain @click="downloadFile(message.content)">
+                                  <el-icon><Download /></el-icon> 下载
+                                </el-button>
+                              </div>
+                            </div>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <el-avatar 
+                    :size="40" 
+                    :src="userAvatar"
+                    class="message-avatar right-avatar"
+                  >
+                    {{ userInitials }}
+                  </el-avatar>
+                </template>
+              </div>
+            </div>
+          </template>
+        </transition-group>
+      </div>
+      
+      <!-- 消息输入框 -->
+      <div class="chat-input">
+        <!-- 工具栏 -->
+        <div class="input-toolbar">
+          <div class="toolbar-left">
+            <el-popover
+              placement="top-start"
+              :width="isMobile ? 'auto' : 340"
+              trigger="click"
+              :teleported="true"
+              popper-class="emoji-popover"
+            >
+              <template #reference>
+                <div class="toolbar-icon emoji-button" title="表情">😊</div>
+              </template>
+              <div class="emoji-picker">
+                <div v-for="emoji in emojiList" :key="emoji" class="emoji-item" @click="insertEmoji(emoji)">
+                  {{ emoji }}
+                </div>
+              </div>
+            </el-popover>
+            <el-tooltip content="发送图片" placement="top" :disabled="isMobile">
+              <el-icon class="toolbar-icon" @click="triggerImageUpload"><Picture /></el-icon>
+            </el-tooltip>
+            <el-tooltip content="发送文件" placement="top" :disabled="isMobile">
+              <el-icon class="toolbar-icon" @click="triggerFileUpload"><FolderOpened /></el-icon>
+            </el-tooltip>
+          </div>
+          
+          <input
+            type="file"
+            ref="imageInputRef"
+            accept="image/*"
+            style="display: none"
+            @change="handleImageUpload"
+          />
+          <input
+            type="file"
+            ref="fileInputRef"
+            style="display: none"
+            @change="handleFileUpload"
+          />
+        </div>
+        
+        <!-- 文本区域 -->
+        <div class="input-container">
+          <div class="textarea-wrapper" :class="{ 'focused': isInputFocused }">
+            <el-input
+              v-model="messageInput"
+              type="textarea"
+              :rows="1"
+              :autosize="{ minRows: 1, maxRows: 1 }"
+              resize="none"
+              placeholder="输入消息..."
+              @keydown.enter.exact.prevent="sendMessage"
+              @keydown.shift.enter.prevent="handleShiftEnter"
+              @focus="isInputFocused = true"
+              @blur="isInputFocused = false"
+              ref="messageInputRef"
+              class="message-textarea"
+            />
+          </div>
+          <div class="input-actions">
+            <el-tooltip content="发送消息" placement="top" :disabled="isMobile">
+              <el-button
+                type="primary"
+                class="send-button"
+                :disabled="!messageInput.trim()"
+                @click="sendMessage"
+                :loading="sendLoading"
+              >
+                发送
+              </el-button>
+            </el-tooltip>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <div v-else class="empty-chat">
+      <el-empty description="选择一个聊天开始会话">
+        <template #image>
+          <el-icon class="empty-icon"><ChatDotRound /></el-icon>
+        </template>
+      </el-empty>
+    </div>
+
+    <!-- 好友信息对话框 -->
+    <FriendInfoDialog
+      v-model="friendInfoDialogVisible"
+      :friend-id="currentChat?.type === 'friend' ? currentChat.id : null"
+      @close="friendInfoDialogVisible = false"
+      @startChat="handleStartChat"
+      @delete="handleDeleteFriend"
+    />
+
+    <!-- 群组信息对话框 -->
+    <GroupInfoDialog
+      v-model="groupInfoDialogVisible"
+      :group-id="currentChat?.type === 'group' ? currentChat.id : null"
+      @close="groupInfoDialogVisible = false"
+      @sendMessage="handleSendPrivateMessage"
+      @leave="handleLeaveGroup"
+    />
+
+    <!-- 图片查看器 -->
+    <ImageViewer
+      v-model:visible="imageViewerVisible"
+      :image-list="currentImageList"
+      :initial-index="currentImageIndex"
+    />
+
+    <!-- 消息右键菜单 -->
+    <ContextMenu
+      v-model:visible="messageContextMenuVisible"
+      :position="messageContextMenuPosition"
+      :menu-items="messageMenuItems"
+      @select="handleMessageMenuSelect"
+    />
+
+    <!-- 搜索消息对话框 -->
+    <el-dialog
+      v-model="searchDialogVisible"
+      title="搜索消息"
+      width="600px"
+      :close-on-click-modal="false"
+      class="search-dialog"
+    >
+      <div class="search-content">
+        <div class="search-input-wrapper">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="输入关键词搜索消息"
+            clearable
+            @keyup.enter="handleSearch"
+            @clear="clearSearch"
+            class="search-input"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+          
+          <el-button type="primary" @click="handleSearch" :loading="searchLoading" class="search-button">
+            搜索
+          </el-button>
+        </div>
+        
+        <el-divider />
+        
+        <div v-loading="searchLoading" class="search-results">
+          <div v-if="searchResults.length === 0 && searchKeyword" class="no-results">
+            <el-empty description="未找到相关消息" />
+          </div>
+          
+          <div v-else-if="searchResults.length === 0" class="search-tips">
+            <el-icon class="tips-icon"><Search /></el-icon>
+            <p>输入关键词搜索聊天消息</p>
+            <ul>
+              <li>支持搜索文本消息内容</li>
+              <li>支持按发送者筛选</li>
+              <li>点击搜索结果可定位到消息</li>
+            </ul>
+          </div>
+          
+          <div v-else class="results-list">
+            <div class="results-count">找到 {{ searchResults.length }} 条相关消息</div>
+            <div
+              v-for="result in searchResults"
+              :key="result.id"
+              class="result-item"
+              @click="scrollToMessage(result)"
+            >
+              <div class="result-header">
+                <el-avatar :size="36" :src="getSenderAvatar(result)">
+                  {{ getSenderInitials(result) }}
+                </el-avatar>
+                <div class="result-info">
+                  <div class="result-sender">{{ getSenderName(result) }}</div>
+                  <div class="result-time">{{ formatFullTime(result.sentAt) }}</div>
+                </div>
+              </div>
+              <div class="result-content">
+                <span v-html="highlightKeyword(result.content)"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-dialog>
+  </div>
+</template>
+
+
 <style scoped>
 /* 基础布局 */
 .chat-window {
@@ -1564,7 +1619,7 @@ const deleteMessage = () => {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: 20px 16px;
   background-color: var(--el-bg-color-page);
   scrollbar-width: thin;
   scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
@@ -1584,23 +1639,23 @@ const deleteMessage = () => {
 }
 
 .message-container {
-  margin-bottom: 2px;
+  margin-bottom: 16px;
   position: relative;
   max-width: 100%;
   transition: all 0.2s ease;
 }
 
 .message-container.first-of-group {
-  margin-top: 8px;
+  margin-top: 12px;
 }
 
 .message-container.last-of-group {
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 .date-divider {
   text-align: center;
-  margin: 24px 0 16px;
+  margin: 28px 0 20px;
   position: relative;
 }
 
@@ -1631,7 +1686,7 @@ const deleteMessage = () => {
 .message-wrapper {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
   padding: 0 12px;
 }
 
@@ -1654,11 +1709,6 @@ const deleteMessage = () => {
   order: 3;
 }
 
-/* 隐藏头像但保留空间 */
-.message-avatar.invisible-avatar {
-  visibility: hidden;
-}
-
 .message-content {
   flex: 0 1 auto;
   max-width: calc(100% - 60px);
@@ -1675,26 +1725,27 @@ const deleteMessage = () => {
 .message-sender {
   font-size: 12px;
   color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
-  padding: 0 8px;
+  margin-bottom: 6px;
+  padding: 0 4px;
+  font-weight: 500;
 }
 
 .message-row {
   display: flex;
   align-items: flex-end;
-  gap: 8px;
+  gap: 10px;
   position: relative;
 }
 
 .message-bubble {
-  padding: 9px 12px;
-  border-radius: 4px;
+  padding: 10px 14px;
+  border-radius: 8px;
   background-color: #ffffff;
   position: relative;
   display: inline-block;
   max-width: 100%;
   word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
 }
 
@@ -1705,13 +1756,14 @@ const deleteMessage = () => {
 }
 
 .message-bubble:hover {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
 }
 
 .text-message {
   white-space: pre-wrap;
-  line-height: 1.5;
+  line-height: 1.6;
   font-size: 14px;
+  letter-spacing: 0.3px;
 }
 
 /* 图片消息 */
@@ -1719,6 +1771,7 @@ const deleteMessage = () => {
   padding: 4px;
   background-color: transparent;
   box-shadow: none;
+  border-radius: 8px;
 }
 
 .own-message .message-type-image .message-bubble {
@@ -1728,7 +1781,7 @@ const deleteMessage = () => {
 .image-message {
   max-width: 240px;
   max-height: 320px;
-  border-radius: 4px;
+  border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   cursor: pointer;
@@ -1852,9 +1905,9 @@ const deleteMessage = () => {
 .message-meta {
   display: flex;
   align-items: center;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--el-text-color-secondary);
-  opacity: 0;
+  opacity: 0.6;
   transition: opacity 0.2s ease;
   white-space: nowrap;
   flex-shrink: 0;
@@ -2157,6 +2210,14 @@ const deleteMessage = () => {
     padding: 8px;
   }
   
+  .message-container {
+    margin-bottom: 14px;
+  }
+  
+  .message-container.last-of-group {
+    margin-bottom: 14px;
+  }
+  
   .message-wrapper {
     padding: 4px 0;
   }
@@ -2167,13 +2228,15 @@ const deleteMessage = () => {
   }
   
   .message-bubble {
-    padding: 10px 12px;
+    padding: 10px 14px;
     max-width: 85%;
+    border-radius: 8px;
   }
   
   .image-message {
     max-width: 180px;
     max-height: 240px;
+    border-radius: 8px;
   }
   
   .file-message {
@@ -2327,13 +2390,15 @@ const deleteMessage = () => {
 
 @media (max-width: 480px) {
   .message-bubble {
-    font-size: 13px;
-    padding: 8px 10px;
+    font-size: 14px;
+    padding: 10px 12px;
+    border-radius: 8px;
   }
   
   .image-message {
     max-width: 150px;
     max-height: 200px;
+    border-radius: 8px;
   }
   
   /* 小屏幕设备表情选择器进一步优化 */

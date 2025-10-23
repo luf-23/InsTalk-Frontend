@@ -1,3 +1,649 @@
+<script setup>
+import { ref, computed, onMounted, watch } from 'vue';
+import { useRouter } from 'vue-router';
+import { ElMessageBox, ElMessage } from 'element-plus';
+import { 
+  ChatDotRound, UserFilled, Collection, 
+  Setting, SwitchButton, Search, Plus, 
+  MoreFilled, Delete, Position, Star, Check, More, ArrowDown, ArrowRight,
+  User, InfoFilled, RemoveFilled, Upload, StarFilled
+} from '@element-plus/icons-vue';
+import UserProfileDialog from './UserProfileDialog.vue';
+import FriendInfoDialog from './FriendInfoDialog.vue';
+import GroupInfoDialog from './GroupInfoDialog.vue';
+import ContextMenu from './ContextMenu.vue';
+import { friendshipStore } from '@/store/friendship';
+import { groupStore } from '@/store/group';
+import { messageStore } from '@/store/message';
+import { conversationStore } from '@/store/conversation';
+import { onlineStatusStore } from '@/store/onlineStatus';
+import { useAuthStore } from '@/store/auth';
+import { useUserInfoStore } from '@/store/userInfo';
+import { searchGroupByNameService } from '@/api/group';
+import { logoutService } from '@/api/auth';
+import { ossClient } from '@/util/oss';
+
+// 路由和Store初始化
+const router = useRouter();
+const friendStore = friendshipStore();
+const gStore = groupStore();
+const msgStore = messageStore();
+const convStore = conversationStore();
+const onlineStore = onlineStatusStore();
+const authStore = useAuthStore();
+const userInfoStore = useUserInfoStore();
+
+// 用户信息
+const username = computed(() => userInfoStore.username);
+const userAvatar = computed(() => userInfoStore.avatar);
+const userRole = computed(() => userInfoStore.role);
+const userInitials = computed(() => getInitials(username.value));
+
+// 选项卡激活状态
+const activeTab = ref('chats');
+
+// 搜索查询
+const searchQuery = ref('');
+
+// 聊天相关数据 - 使用会话列表
+const chatList = computed(() => {
+  return convStore.sortedConversations.map(conv => {
+    return {
+      id: conv.id,
+      type: conv.type,
+      name: convStore.getConversationName(conv),
+      avatar: convStore.getConversationAvatar(conv),
+      lastMessage: conv.lastMessage,
+      lastMessageTime: conv.lastMessageTime,
+      unreadCount: conv.unreadCount,
+      isPinned: conv.isPinned
+    };
+  });
+});
+
+// 好友相关数据
+const friends = computed(() => friendStore.friends);
+const pendingRequests = computed(() => friendStore.pendingRequests);
+const pendingRequestsCount = computed(() => pendingRequests.value.length);
+const searchResults = computed(() => friendStore.searchResults);
+const loading = computed(() => ({
+  ...friendStore.loading,
+  ...gStore.loading,
+  searchGroup: false
+}));
+
+// 创建在线状态的缓存映射，避免频繁调用 isUserOnline
+const friendOnlineStatus = computed(() => {
+  const statusMap = new Map();
+  friends.value.forEach(friend => {
+    statusMap.set(friend.id, onlineStore.isUserOnline(friend.id));
+  });
+  return statusMap;
+});
+
+// 检查好友是否在线（使用缓存）
+const isFriendOnline = (friendId) => {
+  return friendOnlineStatus.value.get(friendId) || false;
+};
+
+// 群组相关数据
+const allGroups = computed(() => gStore.allGroups);
+const groupSearchResults = ref([]);
+const groupSearchQuery = ref('');
+
+// 群组分类和展开状态
+const showCreatedGroups = ref(false);
+const showManagedGroups = ref(false);
+const showJoinedGroups = ref(false);
+
+const createdGroups = computed(() => gStore.allGroups.filter(g => g.ownerId === userInfoStore.userId));
+const managedGroups = computed(() => gStore.allGroups.filter(g => Array.isArray(g.adminIds) && g.adminIds.includes(userInfoStore.userId) && g.ownerId !== userInfoStore.userId));
+const joinedGroups = computed(() =>
+  gStore.allGroups.filter(g =>
+    Array.isArray(g.members) &&
+    g.members.some(m => m.id === userInfoStore.userId) &&
+    g.ownerId !== userInfoStore.userId &&
+    !(Array.isArray(g.adminIds) && g.adminIds.includes(userInfoStore.userId))
+  )
+);
+
+// 对话框显示状态
+const addFriendDialogVisible = ref(false);
+const pendingRequestsDialogVisible = ref(false);
+const createGroupDialogVisible = ref(false);
+const joinGroupDialogVisible = ref(false);
+const userProfileDialogVisible = ref(false);
+const friendInfoDialogVisible = ref(false);
+const groupInfoDialogVisible = ref(false);
+
+// 选中的好友和群组ID
+const selectedFriendId = ref(null);
+const selectedGroupId = ref(null);
+
+// 右键菜单相关
+const chatContextMenuVisible = ref(false);
+const contextMenuPosition = ref({ x: 0, y: 0 });
+const selectedChatForMenu = ref(null);
+
+// 聊天菜单项
+const chatMenuItems = computed(() => {
+  if (!selectedChatForMenu.value) return [];
+  
+  return [
+    {
+      label: selectedChatForMenu.value.isPinned ? '取消置顶' : '置顶会话',
+      icon: Star,
+      action: 'togglePin'
+    },
+    {
+      label: '删除会话',
+      icon: Delete,
+      action: 'delete',
+      danger: true,
+      divider: true
+    }
+  ];
+});
+
+// 添加好友搜索查询
+const friendSearchQuery = ref('');
+
+// 创建群组表单
+const createGroupFormRef = ref(null);
+const createGroupForm = ref({
+  name: '',
+  description: '',
+  avatar: ''
+});
+const createGroupRules = {
+  name: [
+    { required: true, message: '请输入群组名称', trigger: 'blur' },
+    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
+  ],
+  description: [
+    { max: 100, message: '最多100个字符', trigger: 'blur' }
+  ]
+};
+const uploadingAvatar = ref(false);
+
+// 监听搜索查询
+watch(searchQuery, (newValue) => {
+  // 实现本地搜索逻辑
+  // TODO: 根据搜索词过滤聊天、好友和群组
+});
+
+// 切换选项卡
+const handleTabChange = (tab) => {
+  activeTab.value = tab;
+};
+
+// 头像加载错误处理
+const avatarError = () => {
+  // 使用用户名首字母作为替代
+  return true;
+};
+
+// 获取姓名首字母
+const getInitials = (name) => {
+  if (!name) return '?';
+  return name.substring(0, 2).toUpperCase();
+};
+
+// 检查聊天是否激活
+const isChatActive = (chat) => {
+  return msgStore.currentChat && 
+         msgStore.currentChat.id === chat.id && 
+         msgStore.chatType === chat.type;
+};
+
+// 根据聊天对象获取展示名称
+const displayChatName = (chat) => {
+  if (!chat) return '';
+  return chat.name || (chat.type === 'friend' ? `用户 ${chat.id}` : `群组 ${chat.id}`);
+};
+
+// 获取聊天头像
+const getChatAvatar = (chat) => {
+  if (!chat) return '';
+  return chat.avatar || '';
+};
+
+// 获取聊天首字母
+const getChatInitials = (chat) => {
+  return getInitials(chat.name || '');
+};
+
+// 格式化时间
+const formatTime = (time) => {
+  if (!time) return '';
+  
+  // 处理ISO日期时间格式（LocalDateTime返回的格式）
+  const date = new Date(time);
+  if (isNaN(date.getTime())) {
+    console.warn('无效的时间格式:', time);
+    return time; // 返回原始值，防止显示'Invalid Date'
+  }
+  
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.floor((today - messageDate) / (1000 * 60 * 60 * 24));
+  
+  // 今天发送的消息，显示时间
+  if (diffDays === 0) {
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+  }
+  
+  // 昨天发送的消息
+  if (diffDays === 1) {
+    return '昨天';
+  }
+  
+  // 一周内发送的消息，显示星期几
+  if (diffDays < 7) {
+    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    return weekdays[date.getDay()];
+  }
+  
+  // 今年内的消息，显示月/日
+  if (date.getFullYear() === now.getFullYear()) {
+    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
+  }
+  
+  // 更早的消息，显示年/月/日
+  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+};
+
+// 格式化最后一条消息
+const formatLastMessage = (message) => {
+  if (!message) return '';
+  
+  // 根据消息类型格式化
+  switch(message.messageType) {
+    case 'TEXT':
+      return message.content;
+    case 'IMAGE':
+      return '[图片]';
+    case 'FILE':
+      return '[文件]';
+    default:
+      return message.content;
+  }
+};
+
+// 选择聊天
+const selectChat = (chat) => {
+  // 设置当前聊天
+  msgStore.setCurrentChat(chat, chat.type);
+  
+  // 清空该会话的未读数(只在这里调用 API)
+  convStore.clearUnreadCount(chat.id, chat.type, false);
+  
+  // 触发移动端视图切换事件
+  window.dispatchEvent(new CustomEvent('chat-selected'));
+};
+
+// 开始聊天
+const startChat = (target, type) => {
+  // 格式化目标为聊天对象
+  const chat = {
+    id: target.id,
+    type: type,
+    name: type === 'friend' ? target.username : target.name
+  };
+  
+  // 创建或更新会话（不是新消息，不增加未读数）
+  convStore.createOrUpdateConversation({
+    id: target.id,
+    type: type,
+    isNewMessage: false
+  });
+  
+  // 设置为当前聊天
+  msgStore.setCurrentChat(chat, type);
+  
+  // 清空未读数(只在这里调用 API)
+  convStore.clearUnreadCount(target.id, type, false);
+  
+  // 切换到聊天标签
+  activeTab.value = 'chats';
+  
+  // 触发移动端视图切换事件
+  window.dispatchEvent(new CustomEvent('chat-selected'));
+};
+
+// 显示添加好友对话框
+const showAddFriend = () => {
+  friendSearchQuery.value = '';
+  friendStore.clearSearchResults();
+  addFriendDialogVisible.value = true;
+};
+
+// 显示好友申请对话框
+const showPendingRequests = () => {
+  // accept/reject 方法已经实时更新了 pendingRequests，不需要重新获取
+  // 如果需要确保数据最新，可以在页面加载时统一获取一次
+  pendingRequestsDialogVisible.value = true;
+};
+
+// 搜索用户
+const searchUsers = () => {
+  if (!friendSearchQuery.value.trim()) {
+    ElMessage.warning('请输入用户名搜索');
+    return;
+  }
+  
+  friendStore.searchUsers(friendSearchQuery.value);
+};
+
+// 检查是否已经是好友
+const isFriend = (user) => {
+  return friends.value.some(friend => friend.id === user.id);
+};
+
+// 发送好友请求
+const sendFriendRequest = async (userId) => {
+  const success = await friendStore.sendFriendRequest(userId);
+  if (success) {
+    // 清空搜索结果
+    friendSearchQuery.value = '';
+    friendStore.clearSearchResults();
+  }
+};
+
+// 接受好友请求
+const acceptFriendRequest = async (requestId) => {
+  await friendStore.acceptFriendRequest(requestId);
+};
+
+// 拒绝好友请求
+const rejectFriendRequest = async (requestId) => {
+  await friendStore.rejectFriendRequest(requestId);
+};
+
+// 删除好友确认
+const deleteFriendConfirm = (friend) => {
+  ElMessageBox.confirm(
+    `确定要删除好友 ${friend.username} 吗？`,
+    '删除好友',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    deleteFriend(friend.id);
+  }).catch(() => {});
+};
+
+// 删除好友
+const deleteFriend = async (friendId) => {
+  await friendStore.deleteFriend(friendId);
+};
+
+// 显示创建群组对话框
+const showCreateGroup = () => {
+  createGroupForm.value = {
+    name: '',
+    description: '',
+    avatar: ''
+  };
+  createGroupDialogVisible.value = true;
+};
+
+// 显示加入群组对话框
+const showJoinGroup = () => {
+  groupSearchQuery.value = '';
+  groupSearchResults.value = [];
+  joinGroupDialogVisible.value = true;
+};
+
+// 头像上传前验证
+const beforeAvatarUpload = (file) => {
+  const isImage = file.type.startsWith('image/');
+  const isLt5M = file.size / 1024 / 1024 < 5;
+
+  if (!isImage) {
+    ElMessage.error('只能上传图片文件!');
+    return false;
+  }
+  if (!isLt5M) {
+    ElMessage.error('图片大小不能超过 5MB!');
+    return false;
+  }
+  return true;
+};
+
+// 处理头像上传
+const handleAvatarUpload = async (options) => {
+  const { file } = options;
+  
+  uploadingAvatar.value = true;
+  
+  try {
+    // 初始化 OSS 客户端
+    if (!ossClient.client) {
+      await ossClient.init();
+    }
+    
+    // 生成文件名
+    const extension = file.name.split('.').pop();
+    const fileName = ossClient.generateFileName(extension);
+    
+    // 上传文件
+    await ossClient.uploadFile(fileName, file);
+    
+    // 生成文件 URL
+    const avatarUrl = ossClient.generateFileUrl(fileName);
+    
+    // 更新表单中的头像字段
+    createGroupForm.value.avatar = avatarUrl;
+    
+    ElMessage.success('头像上传成功');
+  } catch (error) {
+    console.error('头像上传失败:', error);
+    ElMessage.error('头像上传失败');
+  } finally {
+    uploadingAvatar.value = false;
+  }
+};
+
+// 创建新群组
+const createNewGroup = async () => {
+  if (!createGroupFormRef.value) return;
+  
+  try {
+    await createGroupFormRef.value.validate();
+    
+    const success = await gStore.createGroup(createGroupForm.value);
+    if (success) {
+      createGroupDialogVisible.value = false;
+    }
+  } catch (error) {
+    console.error('表单验证失败', error);
+  }
+};
+
+// 搜索群组
+const searchGroups = async () => {
+  if (!groupSearchQuery.value.trim()) {
+    ElMessage.warning('请输入群组名称搜索');
+    return;
+  }
+  
+  loading.value.searchGroup = true;
+  try {
+    const result = await searchGroupByNameService({ nameLike: groupSearchQuery.value });
+    groupSearchResults.value = result || [];
+  } catch (error) {
+    ElMessage.error('搜索群组失败');
+    groupSearchResults.value = [];
+  } finally {
+    loading.value.searchGroup = false;
+  }
+};
+
+// 加入群组
+const joinGroup = async (groupId) => {
+  const success = await gStore.joinGroup(groupId);
+  if (success) {
+    // joinGroup 方法已经更新了 store 中的群组列表,不需要重新加载
+    ElMessage.success('已成功加入群组');
+  }
+};
+
+// 检查是否是群组成员
+const isGroupMember = (groupId) => {
+  return gStore.isGroupMember(groupId);
+};
+
+// 检查是否是我创建的群组
+const isMyGroup = (group) => {
+  return group.ownerId === userInfoStore.userId;
+};
+
+// 显示用户个人信息
+const showUserProfile = () => {
+  userProfileDialogVisible.value = true;
+};
+
+// 显示用户设置
+const showUserSettings = () => {
+  ElMessage.info('个人设置功能正在开发中');
+};
+
+// 显示好友信息
+const showFriendInfo = (friend) => {
+  selectedFriendId.value = friend.id;
+  friendInfoDialogVisible.value = true;
+};
+
+// 处理从好友信息对话框发起聊天
+const handleFriendStartChat = (friend) => {
+  startChat(friend, 'friend');
+};
+
+// 处理从好友信息对话框删除好友
+const handleFriendDelete = async (friendId) => {
+  await deleteFriend(friendId);
+};
+
+// 显示群组信息
+const showGroupInfo = (group) => {
+  selectedGroupId.value = group.id;
+  groupInfoDialogVisible.value = true;
+};
+
+// 处理从群组信息对话框发起私聊
+const handleGroupSendMessage = (member) => {
+  startChat(member, 'friend');
+};
+
+// 处理从群组信息对话框退出群组
+const handleGroupLeave = (groupId) => {
+  leaveGroupConfirm({ id: groupId });
+};
+
+// 退出群组确认
+const leaveGroupConfirm = (group) => {
+  ElMessageBox.confirm(
+    `确定要退出群组 ${group.name || '该群组'} 吗？`,
+    '退出群组',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    ElMessage.info('退出群组功能开发中...');
+    // TODO: 调用API退出群组
+  }).catch(() => {});
+};
+
+// 置顶/取消置顶会话
+const togglePinChat = (chat) => {
+  convStore.togglePinConversation(chat.id, chat.type);
+};
+
+// 删除会话
+const deleteChat = (chat) => {
+  ElMessageBox.confirm(
+    '删除会话不会删除聊天记录，确定删除吗？',
+    '删除会话',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    convStore.deleteConversation(chat.id, chat.type);
+    
+    // 如果删除的是当前聊天，清空当前聊天
+    if (msgStore.currentChat && 
+        msgStore.currentChat.id === chat.id && 
+        msgStore.chatType === chat.type) {
+      msgStore.setCurrentChat(null, 'friend');
+    }
+  }).catch(() => {});
+};
+
+// 退出登录
+const logout = async () => {
+  ElMessageBox.confirm(
+    '确定要退出登录吗？',
+    '退出登录',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(async () => {
+    try {
+      await logoutService();
+    } catch (error) {
+      console.error('登出接口调用失败', error);
+    } finally {
+      // 无论接口是否成功，都清除本地存储并退出
+      authStore.clearAuth();
+      userInfoStore.clearUserInfo();
+      msgStore.clearMessageData();
+      friendStore.clearFriendshipData();
+      gStore.clearGroupData();
+      convStore.clearConversationData();
+      router.push('/login');
+    }
+  }).catch(() => {});
+};
+
+// 处理聊天右键菜单
+const handleChatContextMenu = (event, chat) => {
+  event.preventDefault();
+  selectedChatForMenu.value = chat;
+  contextMenuPosition.value = {
+    x: event.clientX,
+    y: event.clientY
+  };
+  chatContextMenuVisible.value = true;
+};
+
+// 处理聊天菜单选择
+const handleChatMenuSelect = (action) => {
+  if (!selectedChatForMenu.value) return;
+  
+  switch (action) {
+    case 'togglePin':
+      togglePinChat(selectedChatForMenu.value);
+      break;
+    case 'delete':
+      deleteChat(selectedChatForMenu.value);
+      break;
+  }
+  
+  selectedChatForMenu.value = null;
+};
+</script>
+
+
 <template>
   <div class="chat-sidebar">
     <!-- 用户信息区域 -->
@@ -80,9 +726,12 @@
             @click="selectChat(chat)"
             @contextmenu.prevent="handleChatContextMenu($event, chat)"
           >
-            <el-avatar :size="36" :src="getChatAvatar(chat)" shape="square">
-              {{ getChatInitials(chat) }}
-            </el-avatar>
+            <div class="friend-avatar-wrapper">
+              <el-avatar :size="36" :src="getChatAvatar(chat)" shape="square">
+                {{ getChatInitials(chat) }}
+              </el-avatar>
+              <span v-if="chat.type === 'friend' && isFriendOnline(chat.id)" class="online-indicator"></span>
+            </div>
             <div class="chat-item-content">
               <div class="chat-item-header">
                 <div class="chat-item-title">
@@ -130,9 +779,12 @@
               class="friend-item"
               @click="startChat(friend, 'friend')"
             >
-              <el-avatar :size="36" :src="friend.avatar">
-                {{ getInitials(friend.username) }}
-              </el-avatar>
+              <div class="friend-avatar-wrapper">
+                <el-avatar :size="36" :src="friend.avatar">
+                  {{ getInitials(friend.username) }}
+                </el-avatar>
+                <span v-if="isFriendOnline(friend.id)" class="online-indicator"></span>
+              </div>
               <div class="friend-info">
                 <h4>{{ friend.username }}</h4>
                 <p v-if="friend.signature">{{ friend.signature }}</p>
@@ -509,635 +1161,6 @@
   </div>
 </template>
 
-<script setup>
-import { ref, computed, onMounted, watch } from 'vue';
-import { useRouter } from 'vue-router';
-import { ElMessageBox, ElMessage } from 'element-plus';
-import { 
-  ChatDotRound, UserFilled, Collection, 
-  Setting, SwitchButton, Search, Plus, 
-  MoreFilled, Delete, Position, Star, Check, More, ArrowDown, ArrowRight,
-  User, InfoFilled, RemoveFilled, Upload, StarFilled
-} from '@element-plus/icons-vue';
-import UserProfileDialog from './UserProfileDialog.vue';
-import FriendInfoDialog from './FriendInfoDialog.vue';
-import GroupInfoDialog from './GroupInfoDialog.vue';
-import ContextMenu from './ContextMenu.vue';
-import { friendshipStore } from '@/store/friendship';
-import { groupStore } from '@/store/group';
-import { messageStore } from '@/store/message';
-import { conversationStore } from '@/store/conversation';
-import { useAuthStore } from '@/store/auth';
-import { useUserInfoStore } from '@/store/userInfo';
-import { searchGroupByNameService } from '@/api/group';
-import { logoutService } from '@/api/auth';
-import { ossClient } from '@/util/oss';
-
-// 路由和Store初始化
-const router = useRouter();
-const friendStore = friendshipStore();
-const gStore = groupStore();
-const msgStore = messageStore();
-const convStore = conversationStore();
-const authStore = useAuthStore();
-const userInfoStore = useUserInfoStore();
-
-// 用户信息
-const username = computed(() => userInfoStore.username);
-const userAvatar = computed(() => userInfoStore.avatar);
-const userRole = computed(() => userInfoStore.role);
-const userInitials = computed(() => getInitials(username.value));
-
-// 选项卡激活状态
-const activeTab = ref('chats');
-
-// 搜索查询
-const searchQuery = ref('');
-
-// 聊天相关数据 - 使用会话列表
-const chatList = computed(() => {
-  return convStore.sortedConversations.map(conv => {
-    return {
-      id: conv.id,
-      type: conv.type,
-      name: convStore.getConversationName(conv),
-      avatar: convStore.getConversationAvatar(conv),
-      lastMessage: conv.lastMessage,
-      lastMessageTime: conv.lastMessageTime,
-      unreadCount: conv.unreadCount,
-      isPinned: conv.isPinned
-    };
-  });
-});
-
-// 好友相关数据
-const friends = computed(() => friendStore.friends);
-const pendingRequests = computed(() => friendStore.pendingRequests);
-const pendingRequestsCount = computed(() => pendingRequests.value.length);
-const searchResults = computed(() => friendStore.searchResults);
-const loading = computed(() => ({
-  ...friendStore.loading,
-  ...gStore.loading,
-  searchGroup: false
-}));
-
-// 群组相关数据
-const allGroups = computed(() => gStore.allGroups);
-const groupSearchResults = ref([]);
-const groupSearchQuery = ref('');
-
-// 群组分类和展开状态
-const showCreatedGroups = ref(false);
-const showManagedGroups = ref(false);
-const showJoinedGroups = ref(false);
-
-const createdGroups = computed(() => gStore.allGroups.filter(g => g.ownerId === userInfoStore.userId));
-const managedGroups = computed(() => gStore.allGroups.filter(g => Array.isArray(g.adminIds) && g.adminIds.includes(userInfoStore.userId) && g.ownerId !== userInfoStore.userId));
-const joinedGroups = computed(() =>
-  gStore.allGroups.filter(g =>
-    Array.isArray(g.members) &&
-    g.members.some(m => m.id === userInfoStore.userId) &&
-    g.ownerId !== userInfoStore.userId &&
-    !(Array.isArray(g.adminIds) && g.adminIds.includes(userInfoStore.userId))
-  )
-);
-
-// 对话框显示状态
-const addFriendDialogVisible = ref(false);
-const pendingRequestsDialogVisible = ref(false);
-const createGroupDialogVisible = ref(false);
-const joinGroupDialogVisible = ref(false);
-const userProfileDialogVisible = ref(false);
-const friendInfoDialogVisible = ref(false);
-const groupInfoDialogVisible = ref(false);
-
-// 选中的好友和群组ID
-const selectedFriendId = ref(null);
-const selectedGroupId = ref(null);
-
-// 右键菜单相关
-const chatContextMenuVisible = ref(false);
-const contextMenuPosition = ref({ x: 0, y: 0 });
-const selectedChatForMenu = ref(null);
-
-// 聊天菜单项
-const chatMenuItems = computed(() => {
-  if (!selectedChatForMenu.value) return [];
-  
-  return [
-    {
-      label: selectedChatForMenu.value.isPinned ? '取消置顶' : '置顶会话',
-      icon: Star,
-      action: 'togglePin'
-    },
-    {
-      label: '删除会话',
-      icon: Delete,
-      action: 'delete',
-      danger: true,
-      divider: true
-    }
-  ];
-});
-
-// 添加好友搜索查询
-const friendSearchQuery = ref('');
-
-// 创建群组表单
-const createGroupFormRef = ref(null);
-const createGroupForm = ref({
-  name: '',
-  description: '',
-  avatar: ''
-});
-const createGroupRules = {
-  name: [
-    { required: true, message: '请输入群组名称', trigger: 'blur' },
-    { min: 1, max: 20, message: '长度在 1 到 20 个字符', trigger: 'blur' }
-  ],
-  description: [
-    { max: 100, message: '最多100个字符', trigger: 'blur' }
-  ]
-};
-const uploadingAvatar = ref(false);
-
-// 监听搜索查询
-watch(searchQuery, (newValue) => {
-  // 实现本地搜索逻辑
-  // TODO: 根据搜索词过滤聊天、好友和群组
-});
-
-// 切换选项卡
-const handleTabChange = (tab) => {
-  activeTab.value = tab;
-};
-
-// 头像加载错误处理
-const avatarError = () => {
-  // 使用用户名首字母作为替代
-  return true;
-};
-
-// 获取姓名首字母
-const getInitials = (name) => {
-  if (!name) return '?';
-  return name.substring(0, 2).toUpperCase();
-};
-
-// 检查聊天是否激活
-const isChatActive = (chat) => {
-  return msgStore.currentChat && 
-         msgStore.currentChat.id === chat.id && 
-         msgStore.chatType === chat.type;
-};
-
-// 根据聊天对象获取展示名称
-const displayChatName = (chat) => {
-  if (!chat) return '';
-  return chat.name || (chat.type === 'friend' ? `用户 ${chat.id}` : `群组 ${chat.id}`);
-};
-
-// 获取聊天头像
-const getChatAvatar = (chat) => {
-  if (!chat) return '';
-  return chat.avatar || '';
-};
-
-// 获取聊天首字母
-const getChatInitials = (chat) => {
-  return getInitials(chat.name || '');
-};
-
-// 格式化时间
-const formatTime = (time) => {
-  if (!time) return '';
-  
-  // 处理ISO日期时间格式（LocalDateTime返回的格式）
-  const date = new Date(time);
-  if (isNaN(date.getTime())) {
-    console.warn('无效的时间格式:', time);
-    return time; // 返回原始值，防止显示'Invalid Date'
-  }
-  
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const diffDays = Math.floor((today - messageDate) / (1000 * 60 * 60 * 24));
-  
-  // 今天发送的消息，显示时间
-  if (diffDays === 0) {
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
-  }
-  
-  // 昨天发送的消息
-  if (diffDays === 1) {
-    return '昨天';
-  }
-  
-  // 一周内发送的消息，显示星期几
-  if (diffDays < 7) {
-    const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-    return weekdays[date.getDay()];
-  }
-  
-  // 今年内的消息，显示月/日
-  if (date.getFullYear() === now.getFullYear()) {
-    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' });
-  }
-  
-  // 更早的消息，显示年/月/日
-  return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
-};
-
-// 格式化最后一条消息
-const formatLastMessage = (message) => {
-  if (!message) return '';
-  
-  // 根据消息类型格式化
-  switch(message.messageType) {
-    case 'TEXT':
-      return message.content;
-    case 'IMAGE':
-      return '[图片]';
-    case 'FILE':
-      return '[文件]';
-    default:
-      return message.content;
-  }
-};
-
-// 选择聊天
-const selectChat = (chat) => {
-  // 设置当前聊天
-  msgStore.setCurrentChat(chat, chat.type);
-  
-  // 清空该会话的未读数
-  convStore.clearUnreadCount(chat.id, chat.type);
-  
-  // 触发移动端视图切换事件
-  window.dispatchEvent(new CustomEvent('chat-selected'));
-};
-
-// 开始聊天
-const startChat = (target, type) => {
-  // 格式化目标为聊天对象
-  const chat = {
-    id: target.id,
-    type: type,
-    name: type === 'friend' ? target.username : target.name
-  };
-  
-  // 创建或更新会话（不是新消息，不增加未读数）
-  convStore.createOrUpdateConversation({
-    id: target.id,
-    type: type,
-    isNewMessage: false
-  });
-  
-  // 设置为当前聊天
-  msgStore.setCurrentChat(chat, type);
-  
-  // 清空未读数
-  convStore.clearUnreadCount(target.id, type);
-  
-  // 切换到聊天标签
-  activeTab.value = 'chats';
-  
-  // 触发移动端视图切换事件
-  window.dispatchEvent(new CustomEvent('chat-selected'));
-};
-
-// 显示添加好友对话框
-const showAddFriend = () => {
-  friendSearchQuery.value = '';
-  friendStore.clearSearchResults();
-  addFriendDialogVisible.value = true;
-};
-
-// 显示好友申请对话框
-const showPendingRequests = () => {
-  // accept/reject 方法已经实时更新了 pendingRequests，不需要重新获取
-  // 如果需要确保数据最新，可以在页面加载时统一获取一次
-  pendingRequestsDialogVisible.value = true;
-};
-
-// 搜索用户
-const searchUsers = () => {
-  if (!friendSearchQuery.value.trim()) {
-    ElMessage.warning('请输入用户名搜索');
-    return;
-  }
-  
-  friendStore.searchUsers(friendSearchQuery.value);
-};
-
-// 检查是否已经是好友
-const isFriend = (user) => {
-  return friends.value.some(friend => friend.id === user.id);
-};
-
-// 发送好友请求
-const sendFriendRequest = async (userId) => {
-  const success = await friendStore.sendFriendRequest(userId);
-  if (success) {
-    // 清空搜索结果
-    friendSearchQuery.value = '';
-    friendStore.clearSearchResults();
-  }
-};
-
-// 接受好友请求
-const acceptFriendRequest = async (requestId) => {
-  await friendStore.acceptFriendRequest(requestId);
-};
-
-// 拒绝好友请求
-const rejectFriendRequest = async (requestId) => {
-  await friendStore.rejectFriendRequest(requestId);
-};
-
-// 删除好友确认
-const deleteFriendConfirm = (friend) => {
-  ElMessageBox.confirm(
-    `确定要删除好友 ${friend.username} 吗？`,
-    '删除好友',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    deleteFriend(friend.id);
-  }).catch(() => {});
-};
-
-// 删除好友
-const deleteFriend = async (friendId) => {
-  await friendStore.deleteFriend(friendId);
-};
-
-// 显示创建群组对话框
-const showCreateGroup = () => {
-  createGroupForm.value = {
-    name: '',
-    description: '',
-    avatar: ''
-  };
-  createGroupDialogVisible.value = true;
-};
-
-// 显示加入群组对话框
-const showJoinGroup = () => {
-  groupSearchQuery.value = '';
-  groupSearchResults.value = [];
-  joinGroupDialogVisible.value = true;
-};
-
-// 头像上传前验证
-const beforeAvatarUpload = (file) => {
-  const isImage = file.type.startsWith('image/');
-  const isLt5M = file.size / 1024 / 1024 < 5;
-
-  if (!isImage) {
-    ElMessage.error('只能上传图片文件!');
-    return false;
-  }
-  if (!isLt5M) {
-    ElMessage.error('图片大小不能超过 5MB!');
-    return false;
-  }
-  return true;
-};
-
-// 处理头像上传
-const handleAvatarUpload = async (options) => {
-  const { file } = options;
-  
-  uploadingAvatar.value = true;
-  
-  try {
-    // 初始化 OSS 客户端
-    if (!ossClient.client) {
-      await ossClient.init();
-    }
-    
-    // 生成文件名
-    const extension = file.name.split('.').pop();
-    const fileName = ossClient.generateFileName(extension);
-    
-    // 上传文件
-    await ossClient.uploadFile(fileName, file);
-    
-    // 生成文件 URL
-    const avatarUrl = ossClient.generateFileUrl(fileName);
-    
-    // 更新表单中的头像字段
-    createGroupForm.value.avatar = avatarUrl;
-    
-    ElMessage.success('头像上传成功');
-  } catch (error) {
-    console.error('头像上传失败:', error);
-    ElMessage.error('头像上传失败');
-  } finally {
-    uploadingAvatar.value = false;
-  }
-};
-
-// 创建新群组
-const createNewGroup = async () => {
-  if (!createGroupFormRef.value) return;
-  
-  try {
-    await createGroupFormRef.value.validate();
-    
-    const success = await gStore.createGroup(createGroupForm.value);
-    if (success) {
-      createGroupDialogVisible.value = false;
-    }
-  } catch (error) {
-    console.error('表单验证失败', error);
-  }
-};
-
-// 搜索群组
-const searchGroups = async () => {
-  if (!groupSearchQuery.value.trim()) {
-    ElMessage.warning('请输入群组名称搜索');
-    return;
-  }
-  
-  loading.value.searchGroup = true;
-  try {
-    const result = await searchGroupByNameService({ nameLike: groupSearchQuery.value });
-    groupSearchResults.value = result || [];
-  } catch (error) {
-    ElMessage.error('搜索群组失败');
-    groupSearchResults.value = [];
-  } finally {
-    loading.value.searchGroup = false;
-  }
-};
-
-// 加入群组
-const joinGroup = async (groupId) => {
-  const success = await gStore.joinGroup(groupId);
-  if (success) {
-    // joinGroup 方法已经更新了 store 中的群组列表,不需要重新加载
-    ElMessage.success('已成功加入群组');
-  }
-};
-
-// 检查是否是群组成员
-const isGroupMember = (groupId) => {
-  return gStore.isGroupMember(groupId);
-};
-
-// 检查是否是我创建的群组
-const isMyGroup = (group) => {
-  return group.ownerId === userInfoStore.userId;
-};
-
-// 显示用户个人信息
-const showUserProfile = () => {
-  userProfileDialogVisible.value = true;
-};
-
-// 显示用户设置
-const showUserSettings = () => {
-  ElMessage.info('个人设置功能正在开发中');
-};
-
-// 显示好友信息
-const showFriendInfo = (friend) => {
-  selectedFriendId.value = friend.id;
-  friendInfoDialogVisible.value = true;
-};
-
-// 处理从好友信息对话框发起聊天
-const handleFriendStartChat = (friend) => {
-  startChat(friend, 'friend');
-};
-
-// 处理从好友信息对话框删除好友
-const handleFriendDelete = async (friendId) => {
-  await deleteFriend(friendId);
-};
-
-// 显示群组信息
-const showGroupInfo = (group) => {
-  selectedGroupId.value = group.id;
-  groupInfoDialogVisible.value = true;
-};
-
-// 处理从群组信息对话框发起私聊
-const handleGroupSendMessage = (member) => {
-  startChat(member, 'friend');
-};
-
-// 处理从群组信息对话框退出群组
-const handleGroupLeave = (groupId) => {
-  leaveGroupConfirm({ id: groupId });
-};
-
-// 退出群组确认
-const leaveGroupConfirm = (group) => {
-  ElMessageBox.confirm(
-    `确定要退出群组 ${group.name || '该群组'} 吗？`,
-    '退出群组',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    ElMessage.info('退出群组功能开发中...');
-    // TODO: 调用API退出群组
-  }).catch(() => {});
-};
-
-// 置顶/取消置顶会话
-const togglePinChat = (chat) => {
-  convStore.togglePinConversation(chat.id, chat.type);
-};
-
-// 删除会话
-const deleteChat = (chat) => {
-  ElMessageBox.confirm(
-    '删除会话不会删除聊天记录，确定删除吗？',
-    '删除会话',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(() => {
-    convStore.deleteConversation(chat.id, chat.type);
-    
-    // 如果删除的是当前聊天，清空当前聊天
-    if (msgStore.currentChat && 
-        msgStore.currentChat.id === chat.id && 
-        msgStore.chatType === chat.type) {
-      msgStore.setCurrentChat(null, 'friend');
-    }
-  }).catch(() => {});
-};
-
-// 退出登录
-const logout = async () => {
-  ElMessageBox.confirm(
-    '确定要退出登录吗？',
-    '退出登录',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
-  ).then(async () => {
-    try {
-      await logoutService();
-    } catch (error) {
-      console.error('登出接口调用失败', error);
-    } finally {
-      // 无论接口是否成功，都清除本地存储并退出
-      authStore.clearAuth();
-      userInfoStore.clearUserInfo();
-      msgStore.clearMessageData();
-      friendStore.clearFriendshipData();
-      gStore.clearGroupData();
-      convStore.clearConversationData();
-      router.push('/login');
-    }
-  }).catch(() => {});
-};
-
-// 处理聊天右键菜单
-const handleChatContextMenu = (event, chat) => {
-  event.preventDefault();
-  selectedChatForMenu.value = chat;
-  contextMenuPosition.value = {
-    x: event.clientX,
-    y: event.clientY
-  };
-  chatContextMenuVisible.value = true;
-};
-
-// 处理聊天菜单选择
-const handleChatMenuSelect = (action) => {
-  if (!selectedChatForMenu.value) return;
-  
-  switch (action) {
-    case 'togglePin':
-      togglePinChat(selectedChatForMenu.value);
-      break;
-    case 'delete':
-      deleteChat(selectedChatForMenu.value);
-      break;
-  }
-  
-  selectedChatForMenu.value = null;
-};
-</script>
-
 <style scoped>
 /* 群组分组标题样式 */
 .group-category-header {
@@ -1433,6 +1456,24 @@ const handleChatMenuSelect = (action) => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 在线状态指示器 */
+.friend-avatar-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.online-indicator {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: #67c23a;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
 }
 
 /* 对话框样式 */

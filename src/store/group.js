@@ -27,7 +27,7 @@ export const groupStore = defineStore('group', () => {
     // 轮询间隔（毫秒）- 群组列表变化频率较低，使用 5 秒轮询
     const pollingInterval = ref(5000); // 5秒轮询一次
     // 是否启用轮询
-    const pollingEnabled = ref(true);
+    const pollingEnabled = ref(false);
 
     // 获取所有我已加入的群组列表
     const fetchAllGroups = async (silent = false) => {

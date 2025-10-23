@@ -1,148 +1,3 @@
-<template>
-  <Teleport to="body">
-    <Transition name="image-viewer-fade">
-      <div 
-        v-if="visible" 
-        class="image-viewer-wrapper"
-        @click.self="handleClose"
-        @wheel.prevent="handleWheel"
-      >
-        <!-- 顶部工具栏 -->
-        <div class="image-viewer-toolbar">
-          <div class="toolbar-left">
-            <span class="image-index">{{ currentIndex + 1 }} / {{ imageList.length }}</span>
-          </div>
-          <div class="toolbar-center">
-            <el-tooltip content="放大 (↑)" placement="bottom">
-              <el-icon class="toolbar-btn" @click="zoomIn">
-                <ZoomIn />
-              </el-icon>
-            </el-tooltip>
-            <el-tooltip content="缩小 (↓)" placement="bottom">
-              <el-icon class="toolbar-btn" @click="zoomOut">
-                <ZoomOut />
-              </el-icon>
-            </el-tooltip>
-            <el-tooltip content="1:1 (Ctrl + 0)" placement="bottom">
-              <el-icon class="toolbar-btn" @click="resetScale">
-                <FullScreen />
-              </el-icon>
-            </el-tooltip>
-            <span class="scale-indicator">{{ Math.round(scale * 100) }}%</span>
-          </div>
-          <div class="toolbar-right">
-            <el-tooltip content="逆时针旋转 (←)" placement="bottom">
-              <el-icon class="toolbar-btn" @click="rotateLeft">
-                <RefreshLeft />
-              </el-icon>
-            </el-tooltip>
-            <el-tooltip content="顺时针旋转 (→)" placement="bottom">
-              <el-icon class="toolbar-btn" @click="rotateRight">
-                <RefreshRight />
-              </el-icon>
-            </el-tooltip>
-            <el-tooltip content="下载" placement="bottom">
-              <el-icon class="toolbar-btn" @click="downloadImage">
-                <Download />
-              </el-icon>
-            </el-tooltip>
-            <el-tooltip content="关闭 (ESC)" placement="bottom">
-              <el-icon class="toolbar-btn close-btn" @click="handleClose">
-                <Close />
-              </el-icon>
-            </el-tooltip>
-          </div>
-        </div>
-
-        <!-- 图片容器 -->
-        <div class="image-viewer-container" ref="containerRef">
-          <Transition name="image-slide" mode="out-in">
-            <div 
-              :key="currentImage"
-              class="image-wrapper"
-              @mousedown="handleMouseDown"
-              @dblclick="handleDoubleClick"
-            >
-              <img
-                :src="currentImage"
-                :style="imageStyle"
-                class="viewer-image"
-                @load="handleImageLoad"
-                @error="handleImageError"
-                draggable="false"
-              />
-            </div>
-          </Transition>
-
-          <!-- 加载中 -->
-          <div v-if="loading" class="loading-overlay">
-            <el-icon class="is-loading loading-icon">
-              <Loading />
-            </el-icon>
-            <span>加载中...</span>
-          </div>
-
-          <!-- 加载失败 -->
-          <div v-if="error" class="error-overlay">
-            <el-icon class="error-icon">
-              <Picture />
-            </el-icon>
-            <span>图片加载失败</span>
-          </div>
-        </div>
-
-        <!-- 左右切换按钮 -->
-        <Transition name="fade">
-          <div 
-            v-if="imageList.length > 1 && !loading"
-            class="navigation-buttons"
-          >
-            <el-tooltip content="上一张 (A)" placement="right">
-              <div 
-                class="nav-btn prev-btn"
-                :class="{ disabled: currentIndex === 0 }"
-                @click="prevImage"
-              >
-                <el-icon><ArrowLeft /></el-icon>
-              </div>
-            </el-tooltip>
-            <el-tooltip content="下一张 (D)" placement="left">
-              <div 
-                class="nav-btn next-btn"
-                :class="{ disabled: currentIndex === imageList.length - 1 }"
-                @click="nextImage"
-              >
-                <el-icon><ArrowRight /></el-icon>
-              </div>
-            </el-tooltip>
-          </div>
-        </Transition>
-
-        <!-- 缩略图列表 -->
-        <Transition name="slide-up">
-          <div 
-            v-if="imageList.length > 1 && showThumbnails"
-            class="thumbnail-list"
-          >
-            <div 
-              v-for="(image, index) in imageList"
-              :key="index"
-              class="thumbnail-item"
-              :class="{ active: index === currentIndex }"
-              @click="jumpToImage(index)"
-            >
-              <img :src="image" alt="" />
-              <div class="thumbnail-mask">
-                <span>{{ index + 1 }}</span>
-              </div>
-            </div>
-          </div>
-        </Transition>
-      </div>
-    </Transition>
-  </Teleport>
-</template>
-
 <script setup>
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { ElMessage } from 'element-plus';
@@ -430,6 +285,153 @@ onUnmounted(() => {
   document.body.style.overflow = '';
 });
 </script>
+
+
+<template>
+  <Teleport to="body">
+    <Transition name="image-viewer-fade">
+      <div 
+        v-if="visible" 
+        class="image-viewer-wrapper"
+        @click.self="handleClose"
+        @wheel.prevent="handleWheel"
+      >
+        <!-- 顶部工具栏 -->
+        <div class="image-viewer-toolbar">
+          <div class="toolbar-left">
+            <span class="image-index">{{ currentIndex + 1 }} / {{ imageList.length }}</span>
+          </div>
+          <div class="toolbar-center">
+            <el-tooltip content="放大 (↑)" placement="bottom">
+              <el-icon class="toolbar-btn" @click="zoomIn">
+                <ZoomIn />
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip content="缩小 (↓)" placement="bottom">
+              <el-icon class="toolbar-btn" @click="zoomOut">
+                <ZoomOut />
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip content="1:1 (Ctrl + 0)" placement="bottom">
+              <el-icon class="toolbar-btn" @click="resetScale">
+                <FullScreen />
+              </el-icon>
+            </el-tooltip>
+            <span class="scale-indicator">{{ Math.round(scale * 100) }}%</span>
+          </div>
+          <div class="toolbar-right">
+            <el-tooltip content="逆时针旋转 (←)" placement="bottom">
+              <el-icon class="toolbar-btn" @click="rotateLeft">
+                <RefreshLeft />
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip content="顺时针旋转 (→)" placement="bottom">
+              <el-icon class="toolbar-btn" @click="rotateRight">
+                <RefreshRight />
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip content="下载" placement="bottom">
+              <el-icon class="toolbar-btn" @click="downloadImage">
+                <Download />
+              </el-icon>
+            </el-tooltip>
+            <el-tooltip content="关闭 (ESC)" placement="bottom">
+              <el-icon class="toolbar-btn close-btn" @click="handleClose">
+                <Close />
+              </el-icon>
+            </el-tooltip>
+          </div>
+        </div>
+
+        <!-- 图片容器 -->
+        <div class="image-viewer-container" ref="containerRef">
+          <Transition name="image-slide" mode="out-in">
+            <div 
+              :key="currentImage"
+              class="image-wrapper"
+              @mousedown="handleMouseDown"
+              @dblclick="handleDoubleClick"
+            >
+              <img
+                :src="currentImage"
+                :style="imageStyle"
+                class="viewer-image"
+                @load="handleImageLoad"
+                @error="handleImageError"
+                draggable="false"
+              />
+            </div>
+          </Transition>
+
+          <!-- 加载中 -->
+          <div v-if="loading" class="loading-overlay">
+            <el-icon class="is-loading loading-icon">
+              <Loading />
+            </el-icon>
+            <span>加载中...</span>
+          </div>
+
+          <!-- 加载失败 -->
+          <div v-if="error" class="error-overlay">
+            <el-icon class="error-icon">
+              <Picture />
+            </el-icon>
+            <span>图片加载失败</span>
+          </div>
+        </div>
+
+        <!-- 左右切换按钮 -->
+        <Transition name="fade">
+          <div 
+            v-if="imageList.length > 1 && !loading"
+            class="navigation-buttons"
+          >
+            <el-tooltip content="上一张 (A)" placement="right">
+              <div 
+                class="nav-btn prev-btn"
+                :class="{ disabled: currentIndex === 0 }"
+                @click="prevImage"
+              >
+                <el-icon><ArrowLeft /></el-icon>
+              </div>
+            </el-tooltip>
+            <el-tooltip content="下一张 (D)" placement="left">
+              <div 
+                class="nav-btn next-btn"
+                :class="{ disabled: currentIndex === imageList.length - 1 }"
+                @click="nextImage"
+              >
+                <el-icon><ArrowRight /></el-icon>
+              </div>
+            </el-tooltip>
+          </div>
+        </Transition>
+
+        <!-- 缩略图列表 -->
+        <Transition name="slide-up">
+          <div 
+            v-if="imageList.length > 1 && showThumbnails"
+            class="thumbnail-list"
+          >
+            <div 
+              v-for="(image, index) in imageList"
+              :key="index"
+              class="thumbnail-item"
+              :class="{ active: index === currentIndex }"
+              @click="jumpToImage(index)"
+            >
+              <img :src="image" alt="" />
+              <div class="thumbnail-mask">
+                <span>{{ index + 1 }}</span>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </div>
+    </Transition>
+  </Teleport>
+</template>
+
 
 <style scoped>
 .image-viewer-wrapper {

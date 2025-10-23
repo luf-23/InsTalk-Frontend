@@ -111,13 +111,23 @@ export const conversationStore = defineStore('conversation', () => {
      * 清空未读消息数
      * @param {Number} id - 会话 ID
      * @param {String} type - 会话类型
+     * @param {Boolean} skipApiCall - 是否跳过 API 调用(避免重复调用)
      */
-    const clearUnreadCount = async (id, type) => {
+    const clearUnreadCount = async (id, type, skipApiCall = false) => {
         const conversation = conversations.value.find(
             conv => conv.id === id && conv.type === type
         );
         
         if (conversation && conversation.unreadCount > 0) {
+            // 先清空未读数，避免重复调用
+            const unreadCount = conversation.unreadCount;
+            conversation.unreadCount = 0;
+            
+            // 如果跳过 API 调用，直接返回
+            if (skipApiCall) {
+                return;
+            }
+            
             // 获取该会话的所有未读消息 ID
             const msgStore = messageStore();
             const currentUserId = getCurrentUserId();
@@ -141,6 +151,8 @@ export const conversationStore = defineStore('conversation', () => {
                 try {
                     const messageIds = unreadMessages.map(msg => msg.id);
                     
+                    console.log(`标记 ${messageIds.length} 条消息为已读，会话 ID: ${id}, 类型: ${type}`);
+                    
                     if (messageIds.length === 1) {
                         // 单条消息
                         await markMessageAsReadService({ messageId: messageIds[0] });
@@ -153,14 +165,14 @@ export const conversationStore = defineStore('conversation', () => {
                     unreadMessages.forEach(msg => {
                         msg.isRead = true;
                     });
+                    
+                    console.log(`成功标记 ${messageIds.length} 条消息为已读`);
                 } catch (error) {
                     console.error('标记消息已读失败:', error);
-                    // 即使 API 调用失败，也清空未读数（本地优先）
+                    // API 调用失败，恢复未读数
+                    conversation.unreadCount = unreadCount;
                 }
             }
-            
-            // 清空未读数
-            conversation.unreadCount = 0;
         }
     };
 
