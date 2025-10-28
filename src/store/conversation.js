@@ -195,8 +195,15 @@ export const conversationStore = defineStore('conversation', () => {
     /**
      * 从消息同步会话列表
      * 用于初始化或从消息列表重建会话
+     * @param {Boolean} force - 是否强制同步（忽略已有的持久化数据）
      */
-    const syncConversationsFromMessages = () => {
+    const syncConversationsFromMessages = (force = false) => {
+        // 如果已有持久化的会话数据，且不是强制同步，则跳过
+        if (!force && conversations.value.length > 0) {
+            console.log('已有持久化的会话数据，跳过同步');
+            return;
+        }
+        
         const msgStore = messageStore();
         const currentUserId = getCurrentUserId();
         
