@@ -19,6 +19,7 @@ public class FriendVO {
     private Long id;
     private String username;
     private String signature;
+    private String role;//ROBOT or USER
     private String avatar;
     private LocalDateTime createdAt;
 }
@@ -66,6 +67,7 @@ public class FriendVO {
     private Long id;
     private String username;
     private String signature;
+    private String role;//ROBOT or USER
     private String avatar;
     private LocalDateTime createdAt;
 }
@@ -87,6 +89,7 @@ public class FriendVO {
     private Long id;
     private String username;
     private String signature;
+    private String role;//ROBOT or USER
     private String avatar;
     private LocalDateTime createdAt;
 }
@@ -109,6 +112,7 @@ public class FriendVO {
     private Long id;
     private String username;
     private String signature;
+    private String role;//ROBOT or USER
     private String avatar;
     private LocalDateTime createdAt;
 }

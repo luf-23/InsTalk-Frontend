@@ -10,6 +10,29 @@ export const getAiCredentialService = () => {
 };
 
 
+
+
+/*
+@Data
+public class AiConversationVO {
+    private Long id;
+    private Long robotId;
+    private String title;
+    private String summary;
+    private LocalDateTime lastMessageAt;
+    private LocalDateTime createdAt;
+}
+*/
+//创建AI对话(params传robotId:robotId)
+export const createAiConversationService = (params) => {
+    return request({
+        url: '/ai/createConversation',
+        method: 'post',
+        params,
+    });
+};
+
+
 /*
 @Data
 public class AiConversationVO {
@@ -97,7 +120,20 @@ export const getAiConfigService = (params) => {
 
 /**
  * AI流式对话接口 - 使用SSE(Server-Sent Events)进行流式响应
- * data传{taskId:...,conversationId:...,message:...}
+ * data传AiChatDTO对象
+
+public class AiChatDTO {
+    private String taskId;
+    private Long conversationId;
+    private String currentUserMessage;
+    private List<AiChatMessage> messageHistory;
+    
+    public static class AiChatMessage{
+        private String role;//USER or ASSISTANT
+        private String content;
+    }
+}
+
  * taskId从getAiCredentialService获取
  * conversationId为对话ID
  * message为用户发送的消息内容
