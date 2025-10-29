@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
   ChatDotRound, More, Picture, Document, 
   Folder, FolderOpened, Check, CircleCheck, Loading, Warning, 
-  Search, Download, InfoFilled, RemoveFilled, DocumentCopy, Promotion, RefreshLeft, Delete, ArrowLeft
+  Search, Download, InfoFilled, RemoveFilled, DocumentCopy, Promotion, RefreshLeft, Delete, ArrowLeft, Setting
 } from '@element-plus/icons-vue';
 import { messageStore } from '@/store/message';
 import { conversationStore } from '@/store/conversation';
@@ -17,6 +17,8 @@ import FriendInfoDialog from './FriendInfoDialog.vue';
 import GroupInfoDialog from './GroupInfoDialog.vue';
 import ImageViewer from './ImageViewer.vue';
 import ContextMenu from './ContextMenu.vue';
+import RobotConfigDialog from './RobotConfigDialog.vue';
+import { getAiCredentialService, aiChatStreamService } from '@/api/ai';
 
 // Props
 const props = defineProps({
@@ -61,8 +63,27 @@ const messageInput = ref('');
 // 对话框控制
 const friendInfoDialogVisible = ref(false);
 const groupInfoDialogVisible = ref(false);
+const robotConfigDialogVisible = ref(false);
 const isInputFocused = ref(false);
 const messageInputRef = ref(null);
+
+// AI 对话相关
+const isRobotChat = computed(() => {
+  if (!currentChat.value || chatType.value !== 'friend') return false;
+  const friend = friendInfo.value;
+  return friend && friend.role === 'ROBOT';
+});
+const aiStreaming = ref(false);
+const aiStreamingMessage = ref('');
+const aiCredential = ref('');
+const isOwnerOfRobot = computed(() => {
+  // 检查当前用户是否是 Robot 的主人
+  // 通过检查好友信息中的 requester_id 或其他标识
+  // 简单起见,检查机器人名称是否包含当前用户名
+  if (!isRobotChat.value) return false;
+  const friend = friendInfo.value;
+  return friend && friend.username && friend.username.includes(userInfoStore.username);
+});
 
 // 图片查看器
 const imageViewerVisible = ref(false);
@@ -217,6 +238,15 @@ const groupMembers = computed(() => {
 // 监听消息变化，自动滚动到底部
 watch(messages, () => {
   scrollToBottom();
+  // 检查是否有新的 AI 回复消息
+  if (aiStreaming.value && messages.value.length > 0) {
+    const lastMsg = messages.value[messages.value.length - 1];
+    // 判断是否为机器人回复（senderId为机器人id，且messageType为TEXT）
+    if (isRobotChat.value && lastMsg.senderId === currentChat.value.id && lastMsg.messageType === 'TEXT') {
+      aiStreaming.value = false;
+      aiStreamingMessage.value = '';
+    }
+  }
 }, { deep: true });
 
 // 监听当前聊天变化
@@ -564,7 +594,7 @@ const handleImageUpload = async (event) => {
     }
     
     // 发送图片消息
-    const success = await msgStore.sendMessage(messageData);
+    const { success, message } = await msgStore.sendMessage(messageData);
     
     if (success) {
       ElMessage.success('图片发送成功');
@@ -628,7 +658,7 @@ const handleFileUpload = async (event) => {
     }
     
     // 发送文件消息
-    const success = await msgStore.sendMessage(messageData);
+    const { success, message } = await msgStore.sendMessage(messageData);
     
     if (success) {
       ElMessage.success('文件发送成功');
@@ -676,7 +706,13 @@ const sendMessage = async () => {
   const content = messageInput.value;
   messageInput.value = '';
   
-  // 构建消息数据
+  // 如果是机器人对话，使用 AI 流式对话
+  if (isRobotChat.value) {
+    await sendAiMessage(content);
+    return;
+  }
+  
+  // 普通消息发送
   const messageData = {
     content: content,
     messageType: 'TEXT'
@@ -689,7 +725,7 @@ const sendMessage = async () => {
   }
   
   try {
-    const success = await msgStore.sendMessage(messageData);
+    const { success, message } = await msgStore.sendMessage(messageData);
     
     if (success) {
       // API 已返回 MessageVO 并插入到 store 中,自动滚动到底部
@@ -701,6 +737,101 @@ const sendMessage = async () => {
     console.error('发送消息出错:', error);
     ElMessage.error('消息发送出错');
   }
+};
+
+// 发送 AI 消息（流式对话）
+const sendAiMessage = async (content) => {
+  if (aiStreaming.value) {
+    ElMessage.warning('AI 正在回复中，请稍候');
+    return;
+  }
+  
+  try {
+    // 获取凭证
+    if (!aiCredential.value) {
+      const credential = await getAiCredentialService();
+      aiCredential.value = credential;
+    }
+    
+    // 获取最近的历史消息 ID（最多20条）
+    const recentMessages = messages.value.slice(-20);
+    const messageIds = recentMessages
+      .filter(msg => msg.messageType === 'TEXT') // 只包含文本消息
+      .map(msg => msg.id);
+    
+    // 先发送用户消息到服务器
+    const userMessageData = {
+      content: content,
+      messageType: 'TEXT',
+      receiverId: currentChat.value.id
+    };
+    
+    const { success, message: userMessageVO } = await msgStore.sendMessage(userMessageData);
+    if (!success || !userMessageVO) {
+      ElMessage.error('消息发送失败');
+      return;
+    }
+    
+    // 获取用户消息 ID
+    const currentUserMessageId = userMessageVO.id;
+    
+    // 开始 AI 流式回复
+    aiStreaming.value = true;
+    aiStreamingMessage.value = '';
+    
+    // 滚动到底部显示加载状态
+    nextTick(scrollToBottom);
+    
+    // 调用流式 API
+    aiChatStreamService(
+      {
+        taskId: aiCredential.value,
+        robotId: currentChat.value.id,
+        currentUserMessage: content,
+        currentUserMessageId: currentUserMessageId, // 传递用户消息 ID
+        messageIds: messageIds
+      },
+      // onMessage 回调 - 接收流式数据片段
+      (chunk) => {
+        aiStreamingMessage.value += chunk;
+        // 实时滚动到底部
+        nextTick(scrollToBottom);
+      },
+      // onComplete 回调 - 流式传输完成
+      () => {
+        // AI 回复的完整消息已经由后端保存，会通过 WebSocket 推送过来
+        // 延迟清空流式消息，等待 WebSocket 消息到达
+        setTimeout(() => {
+          aiStreaming.value = false;
+          aiStreamingMessage.value = '';
+        }, 1000); // 延迟 1 秒清空，给 WebSocket 消息留出时间
+        
+        aiCredential.value = ''; // 清空凭证，下次重新获取
+        
+        ElMessage.success('AI 回复完成');
+        nextTick(scrollToBottom);
+      },
+      // onError 回调 - 发生错误
+      (error) => {
+        console.error('AI 对话错误:', error);
+        aiStreaming.value = false;
+        aiStreamingMessage.value = '';
+        aiCredential.value = '';
+        ElMessage.error('AI 回复失败，请重试');
+      }
+    );
+    
+  } catch (error) {
+    console.error('发送 AI 消息错误:', error);
+    aiStreaming.value = false;
+    aiStreamingMessage.value = '';
+    ElMessage.error('发送失败，请重试');
+  }
+};
+
+// 打开机器人配置对话框
+const openRobotConfig = () => {
+  robotConfigDialogVisible.value = true;
 };
 
 // 返回列表（移动端）
@@ -1079,6 +1210,12 @@ const deleteMessage = () => {
           </div>
         </div>
         <div class="chat-actions">
+          <!-- AI Robot 配置按钮 -->
+          <el-tooltip v-if="isRobotChat" content="AI 配置" placement="bottom" :disabled="isMobile">
+            <el-icon class="action-icon robot-config-icon" @click="openRobotConfig">
+              <Setting />
+            </el-icon>
+          </el-tooltip>
           <el-tooltip content="搜索消息" placement="bottom" :disabled="isMobile">
             <el-icon class="action-icon" @click="openSearchDialog"><Search /></el-icon>
           </el-tooltip>
@@ -1285,6 +1422,53 @@ const deleteMessage = () => {
             </div>
           </template>
         </transition-group>
+        
+        <!-- AI 流式回复消息 -->
+        <div v-if="aiStreaming && aiStreamingMessage" class="message-container">
+          <div class="message-wrapper">
+            <el-avatar 
+              :size="40" 
+              :src="chatAvatar"
+              class="message-avatar left-avatar"
+            >
+              <el-icon><ChatDotRound /></el-icon>
+            </el-avatar>
+            
+            <div class="message-content">
+              <div class="message-row">
+                <div class="message-bubble">
+                  <div class="text-message">{{ aiStreamingMessage }}</div>
+                  <div class="ai-streaming-cursor"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- AI 加载状态 -->
+        <div v-if="aiStreaming && !aiStreamingMessage" class="message-container">
+          <div class="message-wrapper">
+            <el-avatar 
+              :size="40" 
+              :src="chatAvatar"
+              class="message-avatar left-avatar"
+            >
+              <el-icon><ChatDotRound /></el-icon>
+            </el-avatar>
+            
+            <div class="message-content">
+              <div class="message-row">
+                <div class="message-bubble ai-loading-bubble">
+                  <div class="ai-loading">
+                    <span class="ai-loading-dot"></span>
+                    <span class="ai-loading-dot"></span>
+                    <span class="ai-loading-dot"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       
       <!-- 消息输入框 -->
@@ -1397,6 +1581,14 @@ const deleteMessage = () => {
       v-model:visible="imageViewerVisible"
       :image-list="currentImageList"
       :initial-index="currentImageIndex"
+    />
+
+    <!-- Robot 配置对话框 -->
+    <RobotConfigDialog
+      v-model="robotConfigDialogVisible"
+      :robot-id="currentChat?.id"
+      :is-owner="isOwnerOfRobot"
+      @close="robotConfigDialogVisible = false"
     />
 
     <!-- 消息右键菜单 -->
@@ -1899,6 +2091,72 @@ const deleteMessage = () => {
 .file-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+/* AI 流式消息样式 */
+/* AI 消息使用与普通消息完全相同的样式，不需要额外定义 */
+
+.ai-streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 18px;
+  background-color: var(--el-color-primary);
+  margin-left: 2px;
+  animation: blink 1s infinite;
+  vertical-align: middle;
+}
+
+@keyframes blink {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+.ai-loading-bubble {
+  padding: 12px 20px;
+  background-color: #ffffff;
+}
+
+.ai-loading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-loading-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--el-color-primary);
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.ai-loading-dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+
+.ai-loading-dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: scale(0);
+  }
+  40% {
+    transform: scale(1);
+  }
+}
+
+.robot-config-icon {
+  color: var(--el-color-primary) !important;
+}
+
+.robot-config-icon:hover {
+  transform: rotate(45deg);
 }
 
 /* 消息元数据 - hover时显示 */

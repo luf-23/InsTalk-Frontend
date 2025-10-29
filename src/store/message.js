@@ -196,13 +196,14 @@ export const messageStore = defineStore('message', () => {
                     });
                 }
                 
-                return true;
+                // 返回包含成功状态和消息对象的结果
+                return { success: true, message: messageVO };
             }
-            return false;
+            return { success: false, message: null };
         } catch (error) {
             console.error('发送消息失败:', error);
             ElMessage.error('发送消息失败');
-            return false;
+            return { success: false, message: null, error };
         } finally {
             loading.value.send = false;
         }
