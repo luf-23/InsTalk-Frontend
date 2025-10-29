@@ -48,6 +48,13 @@ const searchQuery = ref('');
 // 聊天相关数据 - 使用会话列表
 const chatList = computed(() => {
   return convStore.sortedConversations.map(conv => {
+    // 获取 role 信息（如果是好友对话）
+    let role = null;
+    if (conv.type === 'friend') {
+      const friend = friends.value.find(f => f.id === conv.id);
+      role = friend?.role;
+    }
+    
     return {
       id: conv.id,
       type: conv.type,
@@ -56,7 +63,8 @@ const chatList = computed(() => {
       lastMessage: conv.lastMessage,
       lastMessageTime: conv.lastMessageTime,
       unreadCount: conv.unreadCount,
-      isPinned: conv.isPinned
+      isPinned: conv.isPinned,
+      role: role
     };
   });
 });
@@ -722,7 +730,7 @@ const handleChatMenuSelect = (action) => {
             v-for="chat in chatList"
             :key="`${chat.type}_${chat.id}`"
             class="chat-item"
-            :class="{ active: isChatActive(chat) }"
+            :class="{ active: isChatActive(chat), 'robot-chat': chat.role === 'ROBOT' }"
             @click="selectChat(chat)"
             @contextmenu.prevent="handleChatContextMenu($event, chat)"
           >
@@ -731,12 +739,19 @@ const handleChatMenuSelect = (action) => {
                 {{ getChatInitials(chat) }}
               </el-avatar>
               <span v-if="chat.type === 'friend' && isFriendOnline(chat.id)" class="online-indicator"></span>
+              <!-- Robot 标识 -->
+              <span v-if="chat.role === 'ROBOT'" class="robot-badge">AI</span>
             </div>
             <div class="chat-item-content">
               <div class="chat-item-header">
                 <div class="chat-item-title">
                   <el-icon v-if="chat.isPinned" class="pin-icon"><StarFilled /></el-icon>
-                  <h4>{{ displayChatName(chat) }}</h4>
+                  <h4>
+                    {{ displayChatName(chat) }}
+                    <el-icon v-if="chat.role === 'ROBOT'" class="robot-icon" :size="14">
+                      <ChatDotRound />
+                    </el-icon>
+                  </h4>
                 </div>
                 <span class="time">{{ formatTime(chat.lastMessageTime) }}</span>
               </div>
@@ -777,6 +792,7 @@ const handleChatMenuSelect = (action) => {
               v-for="friend in friends"
               :key="friend.id"
               class="friend-item"
+              :class="{ 'robot-friend': friend.role === 'ROBOT' }"
               @click="startChat(friend, 'friend')"
             >
               <div class="friend-avatar-wrapper">
@@ -784,9 +800,16 @@ const handleChatMenuSelect = (action) => {
                   {{ getInitials(friend.username) }}
                 </el-avatar>
                 <span v-if="isFriendOnline(friend.id)" class="online-indicator"></span>
+                <!-- Robot 标识 -->
+                <span v-if="friend.role === 'ROBOT'" class="robot-badge">AI</span>
               </div>
               <div class="friend-info">
-                <h4>{{ friend.username }}</h4>
+                <h4>
+                  {{ friend.username }}
+                  <el-icon v-if="friend.role === 'ROBOT'" class="robot-icon" :size="14">
+                    <ChatDotRound />
+                  </el-icon>
+                </h4>
                 <p v-if="friend.signature">{{ friend.signature }}</p>
               </div>
               <el-dropdown trigger="click" @click.stop>
@@ -1474,6 +1497,40 @@ const handleChatMenuSelect = (action) => {
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow: 0 0 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Robot 标识样式 */
+.robot-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  padding: 1px 4px;
+  font-size: 10px;
+  font-weight: bold;
+  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 8px;
+  border: 1px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  z-index: 1;
+}
+
+.robot-icon {
+  margin-left: 4px;
+  color: #667eea;
+  vertical-align: middle;
+}
+
+.robot-friend {
+  background: linear-gradient(90deg, rgba(102, 126, 234, 0.05) 0%, transparent 100%);
+}
+
+.robot-chat {
+  border-left: 3px solid #667eea;
+}
+
+.robot-chat.active {
+  background: linear-gradient(90deg, rgba(102, 126, 234, 0.15) 0%, var(--el-color-primary-light-9) 100%);
 }
 
 /* 对话框样式 */
