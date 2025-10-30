@@ -235,19 +235,6 @@ const groupMembers = computed(() => {
   return group?.members || [];
 });
 
-// 监听消息变化，自动滚动到底部
-watch(messages, () => {
-  scrollToBottom();
-  // 检查是否有新的 AI 回复消息
-  if (aiStreaming.value && messages.value.length > 0) {
-    const lastMsg = messages.value[messages.value.length - 1];
-    // 判断是否为机器人回复（senderId为机器人id，且messageType为TEXT）
-    if (isRobotChat.value && lastMsg.senderId === currentChat.value.id && lastMsg.messageType === 'TEXT') {
-      aiStreaming.value = false;
-      aiStreamingMessage.value = '';
-    }
-  }
-}, { deep: true });
 
 // 监听当前聊天变化
 watch(currentChat, (newChat, oldChat) => {
@@ -800,11 +787,8 @@ const sendAiMessage = async (content) => {
       // onComplete 回调 - 流式传输完成
       () => {
         // AI 回复的完整消息已经由后端保存，会通过 WebSocket 推送过来
-        // 延迟清空流式消息，等待 WebSocket 消息到达
-        setTimeout(() => {
-          aiStreaming.value = false;
-          aiStreamingMessage.value = '';
-        }, 1000); // 延迟 1 秒清空，给 WebSocket 消息留出时间
+        aiStreaming.value = false;
+        aiStreamingMessage.value = '';
         
         aiCredential.value = ''; // 清空凭证，下次重新获取
         
@@ -1433,10 +1417,9 @@ const deleteMessage = () => {
             >
               <el-icon><ChatDotRound /></el-icon>
             </el-avatar>
-            
             <div class="message-content">
               <div class="message-row">
-                <div class="message-bubble">
+                <div class="message-bubble ai-message-bubble">
                   <div class="text-message">{{ aiStreamingMessage }}</div>
                   <div class="ai-streaming-cursor"></div>
                 </div>
@@ -1455,10 +1438,9 @@ const deleteMessage = () => {
             >
               <el-icon><ChatDotRound /></el-icon>
             </el-avatar>
-            
             <div class="message-content">
               <div class="message-row">
-                <div class="message-bubble ai-loading-bubble">
+                <div class="message-bubble ai-message-bubble ai-loading-bubble">
                   <div class="ai-loading">
                     <span class="ai-loading-dot"></span>
                     <span class="ai-loading-dot"></span>
@@ -1929,16 +1911,22 @@ const deleteMessage = () => {
   position: relative;
 }
 
+
 .message-bubble {
   padding: 10px 14px;
   border-radius: 8px;
   background-color: #ffffff;
   position: relative;
   display: inline-block;
-  max-width: 100%;
+  max-width: 85%;
   word-break: break-word;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
   transition: all 0.2s ease;
+}
+
+/* AI消息气泡宽度与普通消息一致 */
+.ai-message-bubble {
+  max-width: 85%;
 }
 
 /* 自己的消息气泡 - QQ蓝色 */
