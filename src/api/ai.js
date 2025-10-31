@@ -61,8 +61,7 @@ export const getAiConfigService = (params) => {
  * @param {Object} data - AiChatDTO对象
  * @param {string} data.taskId - 任务ID，从getAiCredentialService获取
  * @param {number} data.robotId - Robot用户ID
- * @param {string} data.currentUserMessage - 当前用户发送的消息内容
- * @param {number} data.currentUserMessageId - 当前用户消息的ID，用于后端通过WebSocket推送给AI用户
+ * @param {number} data.currentUserMessageId - 当前用户消息的ID，后端可通过WebSocket推送给AI用户
  * @param {number[]} data.messageIds - 历史消息ID列表，用于构建对话上下文
  * @param {Function} onMessage - 接收到消息片段时的回调函数，参数为消息内容字符串
  * @param {Function} onComplete - 对话完成时的回调函数
@@ -73,8 +72,7 @@ export const getAiConfigService = (params) => {
  * public class AiChatDTO {
  *     private String taskId;
  *     private Long robotId;
- *     private String currentUserMessage;
- *     private Long currentUserMessageId;  // 用于后端通过WebSocket推送给AI用户
+ *     private Long currentUserMessageId;  // 后端可通过WebSocket推送给AI用户，由mgStore的sendMessage接口获取
  *     private List<Long> messageIds;
  * }
  */
