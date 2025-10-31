@@ -774,7 +774,6 @@ const sendAiMessage = async (content) => {
       {
         taskId: aiCredential.value,
         robotId: currentChat.value.id,
-        currentUserMessage: content,
         currentUserMessageId: currentUserMessageId, // 传递用户消息 ID
         messageIds: messageIds
       },
