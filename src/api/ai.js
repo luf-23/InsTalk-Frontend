@@ -82,6 +82,7 @@ export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
     const url = `${baseURL}ai/chat-stream`;
     
     let isCompleted = false; // 添加标志位，防止重复调用 onComplete
+    let reader = null; // 保存 reader 引用
     
     // 使用fetch发起POST请求
     fetch(url, {
@@ -97,7 +98,7 @@ export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
-        const reader = response.body.getReader();
+        reader = response.body.getReader();
         const decoder = new TextDecoder();
         
         // 读取流式数据
@@ -140,15 +141,21 @@ export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
         };
         
         readStream();
-        
-        // 返回一个可以用来中断连接的对象
-        return {
-            close: () => reader.cancel()
-        };
     })
     .catch(error => {
         if (onError) onError(error);
     });
+    
+    // 返回一个可以用来中断连接的对象
+    return {
+        close: () => {
+            if (reader) {
+                reader.cancel().catch(err => {
+                    console.warn('取消流式传输时出错:', err);
+                });
+            }
+        }
+    };
 };
 
 
