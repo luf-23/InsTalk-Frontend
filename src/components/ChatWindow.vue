@@ -76,6 +76,7 @@ const isRobotChat = computed(() => {
 const aiStreaming = ref(false);
 const aiStreamingMessage = ref('');
 const aiCredential = ref('');
+let aiStreamController = null; // 用于控制 AI 流式传输的对象
 const isOwnerOfRobot = computed(() => {
   // 检查当前用户是否是 Robot 的主人
   // 通过检查好友信息中的 requester_id 或其他标识
@@ -239,6 +240,22 @@ const groupMembers = computed(() => {
 // 监听当前聊天变化
 watch(currentChat, (newChat, oldChat) => {
   messageInput.value = '';
+  
+  // 如果正在进行 AI 流式回复，取消它
+  if (aiStreaming.value) {
+    aiStreaming.value = false;
+    aiStreamingMessage.value = '';
+    
+    // 如果有活动的流式传输，取消它
+    if (aiStreamController && typeof aiStreamController.close === 'function') {
+      try {
+        aiStreamController.close();
+      } catch (error) {
+        console.warn('关闭 AI 流式传输时出错:', error);
+      }
+    }
+    aiStreamController = null;
+  }
   
   // 清空该会话的未读消息数(只在聊天对象变化时调用一次)
   // 跳过 API 调用，因为 ChatSidebar 中的 selectChat 已经调用过了
@@ -769,8 +786,8 @@ const sendAiMessage = async (content) => {
     // 滚动到底部显示加载状态
     nextTick(scrollToBottom);
     
-    // 调用流式 API
-    aiChatStreamService(
+    // 调用流式 API 并保存控制器
+    aiStreamController = aiChatStreamService(
       {
         taskId: aiCredential.value,
         robotId: currentChat.value.id,
@@ -779,7 +796,12 @@ const sendAiMessage = async (content) => {
       },
       // onMessage 回调 - 接收流式数据片段
       (chunk) => {
-        aiStreamingMessage.value += chunk;
+        // 只有在当前仍然是 AI 流式状态时才继续处理
+        if (!aiStreaming.value) return;
+        
+        // 将 \n 转换为真正的换行符
+        const processedChunk = chunk.replace(/\\n/g, '\n');
+        aiStreamingMessage.value += processedChunk;
         // 实时滚动到底部
         nextTick(scrollToBottom);
       },
@@ -788,10 +810,10 @@ const sendAiMessage = async (content) => {
         // AI 回复的完整消息已经由后端保存，会通过 WebSocket 推送过来
         aiStreaming.value = false;
         aiStreamingMessage.value = '';
+        aiStreamController = null;
         
         aiCredential.value = ''; // 清空凭证，下次重新获取
         
-        ElMessage.success('AI 回复完成');
         nextTick(scrollToBottom);
       },
       // onError 回调 - 发生错误
@@ -799,6 +821,7 @@ const sendAiMessage = async (content) => {
         console.error('AI 对话错误:', error);
         aiStreaming.value = false;
         aiStreamingMessage.value = '';
+        aiStreamController = null;
         aiCredential.value = '';
         ElMessage.error('AI 回复失败，请重试');
       }
@@ -808,6 +831,7 @@ const sendAiMessage = async (content) => {
     console.error('发送 AI 消息错误:', error);
     aiStreaming.value = false;
     aiStreamingMessage.value = '';
+    aiStreamController = null;
     ElMessage.error('发送失败，请重试');
   }
 };
@@ -815,6 +839,42 @@ const sendAiMessage = async (content) => {
 // 打开机器人配置对话框
 const openRobotConfig = () => {
   robotConfigDialogVisible.value = true;
+};
+
+// 清空AI聊天历史
+const clearAiHistory = () => {
+  if (!isRobotChat.value) return;
+  
+  ElMessageBox.confirm(
+    '确定要清空与AI的聊天历史吗？',
+    '清空历史',
+    {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning',
+    }
+  ).then(() => {
+    // 找出当前AI对话的所有消息ID
+    const aiMessages = messages.value.filter(message => {
+      if (chatType.value === 'friend') {
+        return (message.senderId === currentChat.value.id || message.receiverId === currentChat.value.id) && !message.groupId;
+      }
+      return false;
+    });
+    
+    // 从store中删除这些消息
+    const messageIds = aiMessages.map(msg => msg.id);
+    messageIds.forEach(id => {
+      const index = msgStore.messages.findIndex(m => m.id === id);
+      if (index !== -1) {
+        msgStore.messages.splice(index, 1);
+      }
+    });
+    
+    ElMessage.success('AI聊天历史已清空');
+  }).catch(() => {
+    // 用户取消
+  });
 };
 
 // 返回列表（移动端）
@@ -985,6 +1045,68 @@ const leaveGroup = () => {
 const getInitials = (name) => {
   if (!name) return '?';
   return name.substring(0, 2).toUpperCase();
+};
+
+// 处理消息内容中的换行符（用户消息）
+const formatUserMessageContent = (content) => {
+  if (!content) return '';
+  // 只将 \n 字符串转换为真正的换行符，不做任何Markdown渲染
+  return content.replace(/\\n/g, '\n');
+};
+
+// 处理AI消息内容中的换行符和基本Markdown格式
+const formatAiMessageContent = (content) => {
+  if (!content) return '';
+  // 将 \n 字符串转换为真正的换行符
+  let formatted = content.replace(/\\n/g, '\n');
+  
+  // 处理基本的Markdown格式
+  // 代码块 ```code``` (先处理，避免被其他规则影响)
+  formatted = formatted.replace(/```([\s\S]+?)```/g, '<pre><code>$1</code></pre>');
+  
+  // 行内代码 `code`
+  formatted = formatted.replace(/`([^`]+?)`/g, '<code>$1</code>');
+  
+  // 标题 (需要在行首，支持前后可能有空格)
+  formatted = formatted.replace(/^\s*###\s+(.+)$/gm, '<h3>$1</h3>');
+  formatted = formatted.replace(/^\s*##\s+(.+)$/gm, '<h2>$1</h2>');
+  formatted = formatted.replace(/^\s*#\s+(.+)$/gm, '<h1>$1</h1>');
+  
+  // 引用 > text (支持前面可能有空格)
+  formatted = formatted.replace(/^\s*>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
+  
+  // 加粗 **text** 或 __text__
+  formatted = formatted.replace(/\*\*([^\*]+?)\*\*/g, '<strong>$1</strong>');
+  formatted = formatted.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
+  
+  // 斜体 *text* 或 _text_ (避免匹配加粗)
+  formatted = formatted.replace(/(?<!\*)\*([^\*]+?)\*(?!\*)/g, '<em>$1</em>');
+  formatted = formatted.replace(/(?<!_)_([^_]+?)_(?!_)/g, '<em>$1</em>');
+  
+  // 删除线 ~~text~~
+  formatted = formatted.replace(/~~([^~]+?)~~/g, '<del>$1</del>');
+  
+  // 将换行符转换为 <br> 标签（除了已经在块级元素中的）
+  formatted = formatted.replace(/\n/g, '<br>');
+  
+  return formatted;
+};
+
+// 判断消息是否来自AI机器人
+const isAiMessage = (message) => {
+  if (!currentChat.value || chatType.value !== 'friend') return false;
+  if (isOwnMessage(message)) return false; // 自己的消息不是AI消息
+  const friend = friendInfo.value;
+  return friend && friend.role === 'ROBOT';
+};
+
+// 根据消息类型格式化内容
+const formatMessageContent = (message) => {
+  if (isAiMessage(message)) {
+    return formatAiMessageContent(message.content);
+  } else {
+    return formatUserMessageContent(message.content);
+  }
 };
 
 // 打开图片查看器
@@ -1209,6 +1331,9 @@ const deleteMessage = () => {
                 <el-dropdown-item @click="showChatInfo">
                   <el-icon><InfoFilled /></el-icon> 查看信息
                 </el-dropdown-item>
+                <el-dropdown-item v-if="isRobotChat" @click="clearAiHistory">
+                  <el-icon><Delete /></el-icon> 清空AI历史
+                </el-dropdown-item>
                 <el-dropdown-item v-if="currentChat.type === 'group'" @click="leaveGroup">
                   <el-icon><RemoveFilled /></el-icon> 退出群组
                 </el-dropdown-item>
@@ -1222,11 +1347,16 @@ const deleteMessage = () => {
       <div class="chat-messages" ref="messagesContainerRef">
         <transition-group name="fade-slide" tag="div">
           <div v-if="messages.length === 0" key="empty" class="empty-messages">
-            <el-empty description="暂无消息">
+            <el-empty :description="isRobotChat ? '欢迎使用您的AI助手' : '暂无消息'">
               <template #image>
                 <div class="empty-illustration">
                   <el-icon class="empty-icon"><ChatDotRound /></el-icon>
-                  <div class="empty-hint">开始对话吧</div>
+                  <div class="empty-hint" v-if="isRobotChat">
+                    <p class="ai-hint-title">这是您的专属AI助手</p>
+                    <p class="ai-hint-desc">使用您的账号密码登录 AI 管理后台</p>
+                    <p class="ai-hint-desc">可以批准其他人使用您的AI助手</p>
+                  </div>
+                  <div class="empty-hint" v-else>开始对话吧</div>
                 </div>
               </template>
             </el-empty>
@@ -1282,7 +1412,9 @@ const deleteMessage = () => {
                       <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
                         <!-- 根据消息类型显示内容 -->
                         <template v-if="message.messageType === 'TEXT'">
-                          <div class="text-message">{{ message.content }}</div>
+                          <!-- AI消息使用v-html渲染Markdown，用户消息使用纯文本 -->
+                          <div v-if="isAiMessage(message)" class="text-message" v-html="formatMessageContent(message)"></div>
+                          <div v-else class="text-message">{{ formatMessageContent(message) }}</div>
                         </template>
                         <template v-else-if="message.messageType === 'IMAGE'">
                           <div class="image-message" @dblclick="openImageViewer(message.content)">
@@ -1350,7 +1482,9 @@ const deleteMessage = () => {
                       <div class="message-bubble" :class="'message-type-' + message.messageType.toLowerCase()">
                         <!-- 根据消息类型显示内容 -->
                         <template v-if="message.messageType === 'TEXT'">
-                          <div class="text-message">{{ message.content }}</div>
+                          <!-- AI消息使用v-html渲染Markdown，用户消息使用纯文本 -->
+                          <div v-if="isAiMessage(message)" class="text-message" v-html="formatMessageContent(message)"></div>
+                          <div v-else class="text-message">{{ formatMessageContent(message) }}</div>
                         </template>
                         <template v-else-if="message.messageType === 'IMAGE'">
                           <div class="image-message" @dblclick="openImageViewer(message.content)">
@@ -1419,7 +1553,7 @@ const deleteMessage = () => {
             <div class="message-content">
               <div class="message-row">
                 <div class="message-bubble ai-message-bubble">
-                  <div class="text-message">{{ aiStreamingMessage }}</div>
+                  <div class="text-message" v-html="formatAiMessageContent(aiStreamingMessage)"></div>
                   <div class="ai-streaming-cursor"></div>
                 </div>
               </div>
@@ -1945,6 +2079,130 @@ const deleteMessage = () => {
   letter-spacing: 0.3px;
 }
 
+/* Markdown 格式样式 */
+.text-message h1,
+.text-message h2,
+.text-message h3 {
+  margin: 8px 0;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.text-message h1 {
+  font-size: 20px;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 6px;
+}
+
+.text-message h2 {
+  font-size: 18px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 4px;
+}
+
+.text-message h3 {
+  font-size: 16px;
+}
+
+.own-message .text-message h1 {
+  border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+
+.own-message .text-message h2 {
+  border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+
+.text-message h1,
+.text-message h2,
+.text-message h3 {
+  margin: 12px 0 8px 0;
+  color: inherit;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.text-message h1 {
+  font-size: 18px;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+  padding-bottom: 6px;
+}
+
+.text-message h2 {
+  font-size: 16px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  padding-bottom: 4px;
+}
+
+.text-message h3 {
+  font-size: 15px;
+}
+
+.own-message .text-message h1 {
+  border-bottom-color: rgba(0, 0, 0, 0.15);
+}
+
+.own-message .text-message h2 {
+  border-bottom-color: rgba(0, 0, 0, 0.12);
+}
+
+.text-message blockquote {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border-left: 4px solid rgba(0, 0, 0, 0.2);
+  background-color: rgba(0, 0, 0, 0.03);
+  border-radius: 0 4px 4px 0;
+}
+
+.own-message .text-message blockquote {
+  border-left-color: rgba(0, 0, 0, 0.25);
+  background-color: rgba(0, 0, 0, 0.08);
+}
+
+.text-message strong {
+  font-weight: 700;
+  color: inherit;
+}
+
+.text-message em {
+  font-style: italic;
+}
+
+.text-message del {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.text-message code {
+  background-color: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.own-message .text-message code {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.text-message pre {
+  background-color: rgba(0, 0, 0, 0.06);
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 6px 0;
+}
+
+.own-message .text-message pre {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.text-message pre code {
+  background-color: transparent;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 /* 图片消息 */
 .message-type-image .message-bubble {
   padding: 4px;
@@ -2361,6 +2619,21 @@ const deleteMessage = () => {
 .empty-hint {
   color: var(--el-text-color-secondary);
   font-size: 16px;
+}
+
+/* AI 助手提示样式 */
+.ai-hint-title {
+  color: var(--el-color-primary);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 12px 0 8px 0;
+}
+
+.ai-hint-desc {
+  color: var(--el-text-color-regular);
+  font-size: 14px;
+  margin: 6px 0;
+  line-height: 1.6;
 }
 
 .empty-messages {
