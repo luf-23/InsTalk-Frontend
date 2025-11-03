@@ -66,8 +66,14 @@ class WebSocketService {
                         case 'NEW_MESSAGE':
                             this.triggerHandler('newMessage', data.data);
                             break;
+                        case 'MESSAGE_RECALL':
+                            this.triggerHandler('messageRecall', data.data);
+                            break;
                         case 'USER_ONLINE_STATUS':
                             this.triggerHandler('onlineStatus', data.data);
+                            break;
+                        case 'FRIEND_DELETED':
+                            this.triggerHandler('friendDeleted', data.data);
                             break;
                         default:
                             console.warn('未知的消息类型:', data.type);
@@ -169,7 +175,7 @@ class WebSocketService {
 
     /**
      * 注册消息处理器
-     * @param {String} type - 消息类型：'open' | 'close' | 'error' | 'newMessage' | 'onlineStatus'
+     * @param {String} type - 消息类型：'open' | 'close' | 'error' | 'newMessage' | 'messageRecall' | 'onlineStatus' | 'friendDeleted'
      * @param {Function} handler - 处理函数
      */
     on(type, handler) {

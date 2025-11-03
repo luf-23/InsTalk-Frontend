@@ -1,8 +1,9 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { sendMessageService, getMessageHistoryService } from "@/api/message";
+import { sendMessageService, getMessageHistoryService, revokeMessageService, deleteMessageService, forwardMessageService } from "@/api/message";
 import { useUserInfoStore } from "@/store/userInfo";
 import { conversationStore } from "@/store/conversation";
+import { friendshipStore } from "@/store/friendship";
 import { ElMessage } from "element-plus";
 import websocketService from "@/util/websocket";
 import { useAuthStore } from "@/store/auth";
@@ -32,7 +33,9 @@ export const messageStore = defineStore('message', () => {
     const wsConnected = ref(false);
     // WebSocket 消息处理器
     let wsMessageHandler = null;
+    let wsMessageRecallHandler = null;
     let wsOnlineStatusHandler = null;
+    let wsFriendDeletedHandler = null;
 
     // 获取消息历史（强制从服务器刷新）
     const fetchMessageHistory = async (force = false) => {
@@ -129,15 +132,65 @@ export const messageStore = defineStore('message', () => {
             }
         };
 
+        // 注册消息撤回处理器
+        wsMessageRecallHandler = (data) => {
+            console.log('收到消息撤回通知:', data);
+            const messageId = data.messageId;
+            
+            // 从本地消息列表中删除被撤回的消息
+            const messageIndex = messages.value.findIndex(m => m.id === messageId);
+            if (messageIndex !== -1) {
+                const message = messages.value[messageIndex];
+                messages.value.splice(messageIndex, 1);
+                
+                // 更新会话的最后一条消息
+                updateConversationAfterMessageDeletion(message);
+                
+                console.log(`消息 ${messageId} 已从列表中移除（撤回）`);
+            }
+        };
+
         wsOnlineStatusHandler = (statusData) => {
             console.log('用户在线状态更新:', statusData);
             // 可以在这里更新好友列表的在线状态
             // 这里暂时只记录日志，具体实现可以在 friendship store 中处理
         };
 
+        // 注册好友删除处理器
+        wsFriendDeletedHandler = (data) => {
+            console.log('收到好友删除通知:', data);
+            const friendId = data.friendId || data.userId;
+            
+            if (friendId) {
+                // 从好友列表中移除该用户
+                const friendStore = friendshipStore();
+                const friendIndex = friendStore.friends.findIndex(f => f.id === friendId);
+                if (friendIndex !== -1) {
+                    friendStore.friends.splice(friendIndex, 1);
+                    console.log(`用户 ${friendId} 已将你从好友列表中删除`);
+                }
+                
+                // 删除与该用户的会话
+                const convStore = conversationStore();
+                convStore.deleteConversation(friendId, 'friend', true);
+                
+                // 如果正在与该用户聊天，清空当前聊天
+                if (currentChat.value && 
+                    currentChat.value.id === friendId && 
+                    chatType.value === 'friend') {
+                    setCurrentChat(null, 'friend');
+                }
+                
+                // 提示用户
+                ElMessage.warning('你已被对方从好友列表中移除');
+            }
+        };
+
         // 注册处理器
         websocketService.on('newMessage', wsMessageHandler);
+        websocketService.on('messageRecall', wsMessageRecallHandler);
         websocketService.on('onlineStatus', wsOnlineStatusHandler);
+        websocketService.on('friendDeleted', wsFriendDeletedHandler);
         websocketService.on('open', () => {
             wsConnected.value = true;
             console.log('WebSocket 已连接');
@@ -160,9 +213,17 @@ export const messageStore = defineStore('message', () => {
             websocketService.off('newMessage', wsMessageHandler);
             wsMessageHandler = null;
         }
+        if (wsMessageRecallHandler) {
+            websocketService.off('messageRecall', wsMessageRecallHandler);
+            wsMessageRecallHandler = null;
+        }
         if (wsOnlineStatusHandler) {
             websocketService.off('onlineStatus', wsOnlineStatusHandler);
             wsOnlineStatusHandler = null;
+        }
+        if (wsFriendDeletedHandler) {
+            websocketService.off('friendDeleted', wsFriendDeletedHandler);
+            wsFriendDeletedHandler = null;
         }
 
         // 断开连接
@@ -304,6 +365,167 @@ export const messageStore = defineStore('message', () => {
         };
     };
 
+    // 删除消息（本地删除）
+    const deleteMessage = async (messageId) => {
+        try {
+            // 先找到要删除的消息
+            const messageToDelete = messages.value.find(m => m.id === messageId);
+            if (!messageToDelete) {
+                return { success: false, error: '消息不存在' };
+            }
+            
+            // 调用本地删除服务
+            await deleteMessageService(messageId);
+            
+            // 从本地消息列表中移除
+            const index = messages.value.findIndex(m => m.id === messageId);
+            if (index !== -1) {
+                messages.value.splice(index, 1);
+            }
+            
+            // 更新会话的最后一条消息
+            updateConversationAfterMessageDeletion(messageToDelete);
+            
+            return { success: true };
+        } catch (error) {
+            console.error('删除消息失败:', error);
+            return { success: false, error };
+        }
+    };
+
+    // 撤回消息（调用后端API）
+    const recallMessage = async (messageId) => {
+        try {
+            // 先找到要撤回的消息
+            const messageToRecall = messages.value.find(m => m.id === messageId);
+            if (!messageToRecall) {
+                return { success: false, error: '消息不存在' };
+            }
+            
+            // 调用后端撤回API
+            await revokeMessageService({ messageId });
+            
+            // API 调用成功，从本地消息列表中移除
+            const index = messages.value.findIndex(m => m.id === messageId);
+            if (index !== -1) {
+                messages.value.splice(index, 1);
+            }
+            
+            // 更新会话的最后一条消息
+            updateConversationAfterMessageDeletion(messageToRecall);
+            
+            return { success: true };
+        } catch (error) {
+            console.error('撤回消息失败:', error);
+            return { success: false, error };
+        }
+    };
+
+    /**
+     * 在消息删除后更新会话的最后一条消息
+     * @param {Object} deletedMessage - 被删除的消息对象
+     */
+    const updateConversationAfterMessageDeletion = (deletedMessage) => {
+        const convStore = conversationStore();
+        const currentUserId = getCurrentUserId();
+        
+        // 确定会话 ID 和类型
+        let conversationId, conversationType;
+        if (deletedMessage.groupId) {
+            conversationId = deletedMessage.groupId;
+            conversationType = 'group';
+        } else {
+            conversationId = deletedMessage.senderId === currentUserId 
+                ? deletedMessage.receiverId 
+                : deletedMessage.senderId;
+            conversationType = 'friend';
+        }
+        
+        // 查找该会话
+        const conversation = convStore.conversations.find(
+            conv => conv.id === conversationId && conv.type === conversationType
+        );
+        
+        // 如果会话不存在或被删除的消息不是会话的最后一条消息，直接返回
+        if (!conversation || conversation.lastMessage?.id !== deletedMessage.id) {
+            return;
+        }
+        
+        // 找到该会话中剩余的最新消息
+        const conversationMessages = messages.value.filter(msg => {
+            if (conversationType === 'group') {
+                return msg.groupId === conversationId;
+            } else {
+                return (msg.senderId === conversationId || msg.receiverId === conversationId) && !msg.groupId;
+            }
+        });
+        
+        if (conversationMessages.length > 0) {
+            // 按时间排序，找到最新的消息
+            const sortedMessages = [...conversationMessages].sort((a, b) => 
+                getTimeForComparison(b.sentAt) - getTimeForComparison(a.sentAt)
+            );
+            const newLastMessage = sortedMessages[0];
+            
+            // 更新会话的最后一条消息
+            conversation.lastMessage = newLastMessage;
+            conversation.lastMessageTime = newLastMessage.sentAt;
+            conversation.updatedAt = new Date().toISOString();
+        } else {
+            // 没有剩余消息，清空最后一条消息
+            conversation.lastMessage = null;
+            conversation.lastMessageTime = null;
+            conversation.updatedAt = new Date().toISOString();
+        }
+    };
+
+    // 转发消息
+    const forwardMessage = async (originalMessage, targetId, targetType) => {
+        loading.value.send = true;
+        try {
+            // 构建转发消息数据
+            const messageData = {
+                content: originalMessage.content,
+                messageType: originalMessage.messageType
+            };
+            
+            if (targetType === 'friend') {
+                messageData.receiverId = targetId;
+            } else if (targetType === 'group') {
+                messageData.groupId = targetId;
+            }
+            
+            // 使用发送消息接口来转发
+            const messageVO = await sendMessageService(messageData);
+            
+            if (messageVO) {
+                // 检查消息是否已存在
+                const exists = messages.value.some(m => m.id === messageVO.id);
+                if (!exists) {
+                    messages.value.push(messageVO);
+                    
+                    // 更新会话
+                    const convStore = conversationStore();
+                    convStore.createOrUpdateConversation({
+                        id: targetId,
+                        type: targetType,
+                        lastMessage: messageVO,
+                        isNewMessage: false
+                    });
+                }
+                
+                return { success: true, message: messageVO };
+            }
+            
+            return { success: false };
+        } catch (error) {
+            console.error('转发消息失败:', error);
+            return { success: false, error };
+        } finally {
+            loading.value.send = false;
+        }
+    };
+
     return {
         messages,
         currentChat,
@@ -318,7 +540,10 @@ export const messageStore = defineStore('message', () => {
         getChatList,
         clearMessageData,
         initWebSocket,
-        disconnectWebSocket
+        disconnectWebSocket,
+        deleteMessage,
+        recallMessage,
+        forwardMessage
     };
 }, {
     persist: {

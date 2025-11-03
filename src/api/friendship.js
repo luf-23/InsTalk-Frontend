@@ -48,6 +48,7 @@ export const rejectFriendRequestService = (params) => {
 }
 
 //删除好友
+//prams传{id:对方id}
 export const deleteFriendService = (params) => {
     return request({
         url: '/friendship/delete',

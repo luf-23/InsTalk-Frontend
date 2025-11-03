@@ -10,6 +10,8 @@ import {
     searchUserByUsernameService
 } from "@/api/friendship";
 import { ElMessage } from "element-plus";
+import { conversationStore } from "@/store/conversation";
+import { messageStore } from "@/store/message";
 
 export const friendshipStore = defineStore('friendship', () => {
     // 存储好友列表
@@ -126,13 +128,27 @@ export const friendshipStore = defineStore('friendship', () => {
     const deleteFriend = async (friendId) => {
         try {
             await deleteFriendService({ id: friendId });
-            ElMessage.success('已删除好友');
             
-            // 直接从好友列表中移除该好友
+            // 从好友列表中移除该好友
             const index = friends.value.findIndex(friend => friend.id === friendId);
             if (index !== -1) {
                 friends.value.splice(index, 1);
             }
+            
+            // 清理相关会话（删除好友后，静默删除与该好友的会话）
+            const convStore = conversationStore();
+            convStore.deleteConversation(friendId, 'friend', true);
+            
+            // 如果当前正在与该好友聊天，清空当前聊天
+            const msgStore = messageStore();
+            if (msgStore.currentChat && 
+                msgStore.currentChat.id === friendId && 
+                msgStore.chatType === 'friend') {
+                msgStore.setCurrentChat(null, 'friend');
+            }
+            
+            ElMessage.success('已删除好友');
+            console.log(`已删除好友 ID: ${friendId}，并清理相关会话`);
             
             return true;
         } catch (error) {

@@ -18,6 +18,7 @@ import GroupInfoDialog from './GroupInfoDialog.vue';
 import ImageViewer from './ImageViewer.vue';
 import ContextMenu from './ContextMenu.vue';
 import RobotConfigDialog from './RobotConfigDialog.vue';
+import ForwardDialog from './ForwardDialog.vue';
 import { getAiCredentialService, aiChatStreamService } from '@/api/ai';
 
 // Props
@@ -101,6 +102,10 @@ const searchLoading = ref(false);
 const messageContextMenuVisible = ref(false);
 const messageContextMenuPosition = ref({ x: 0, y: 0 });
 const selectedMessageForMenu = ref(null);
+
+// 转发对话框相关
+const forwardDialogVisible = ref(false);
+const messageToForward = ref(null);
 
 // 长按相关
 let longPressTimer = null;
@@ -1241,45 +1246,131 @@ const saveImage = () => {
 
 // 转发消息
 const forwardMessage = () => {
-  ElMessage.info('转发功能开发中...');
+  if (!selectedMessageForMenu.value) return;
+  
+  // 设置要转发的消息
+  messageToForward.value = selectedMessageForMenu.value;
+  
+  // 打开转发对话框
+  forwardDialogVisible.value = true;
+};
+
+// 处理转发确认
+const handleForwardConfirm = async (targets) => {
+  if (!messageToForward.value || targets.length === 0) {
+    return;
+  }
+  
+  const loadingMsg = ElMessage({
+    message: '正在转发消息...',
+    type: 'info',
+    duration: 0
+  });
+  
+  try {
+    let successCount = 0;
+    let failCount = 0;
+    
+    // 依次转发到每个目标
+    for (const target of targets) {
+      const { success } = await msgStore.forwardMessage(
+        messageToForward.value,
+        target.id,
+        target.type
+      );
+      
+      if (success) {
+        successCount++;
+      } else {
+        failCount++;
+      }
+    }
+    
+    loadingMsg.close();
+    
+    if (failCount === 0) {
+      ElMessage.success(`消息已成功转发到 ${successCount} 个目标`);
+    } else if (successCount === 0) {
+      ElMessage.error('消息转发失败');
+    } else {
+      ElMessage.warning(`消息已转发到 ${successCount} 个目标，${failCount} 个失败`);
+    }
+    
+    // 清空转发消息
+    messageToForward.value = null;
+  } catch (error) {
+    loadingMsg.close();
+    console.error('转发消息出错:', error);
+    ElMessage.error('转发消息出错');
+  }
 };
 
 // 撤回消息
-const recallMessage = () => {
+const recallMessage = async () => {
   if (!selectedMessageForMenu.value) return;
   
-  ElMessageBox.confirm(
-    '确定要撤回这条消息吗？',
-    '撤回消息',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
+  // 保存消息引用，防止在确认对话框期间被清空
+  const messageToRecall = selectedMessageForMenu.value;
+  
+  try {
+    await ElMessageBox.confirm(
+      '确定要撤回这条消息吗？撤回后对方将无法看到这条消息。',
+      '撤回消息',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    // 调用撤回API
+    const { success } = await msgStore.recallMessage(messageToRecall.id);
+    
+    if (success) {
+      ElMessage.success('消息已撤回');
+    } else {
+      ElMessage.error('撤回失败');
     }
-  ).then(() => {
-    ElMessage.info('撤回功能开发中...');
-  }).catch(() => {
-    // 用户取消
-  });
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('撤回消息出错:', error);
+      ElMessage.error('撤回消息出错');
+    }
+  }
 };
 
 // 删除消息
-const deleteMessage = () => {
+const deleteMessage = async () => {
   if (!selectedMessageForMenu.value) return;
   
-  ElMessageBox.confirm(
-    '确定要删除这条消息吗？',
-    '删除消息',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
+  // 保存消息引用，防止在确认对话框期间被清空
+  const messageToDelete = selectedMessageForMenu.value;
+  
+  try {
+    await ElMessageBox.confirm(
+      '确定要删除这条消息吗？删除后仅从你的设备中移除，对方仍可看到。',
+      '删除消息',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    // 调用删除API
+    const { success } = await msgStore.deleteMessage(messageToDelete.id);
+    
+    if (success) {
+      ElMessage.success('消息已删除');
+    } else {
+      ElMessage.error('删除失败');
     }
-  ).then(() => {
-    ElMessage.info('删除功能开发中...');
-  }).catch(() => {
-    // 用户取消
-  });
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除消息出错:', error);
+      ElMessage.error('删除消息出错');
+    }
+  }
 };
 </script>
 
@@ -1704,6 +1795,14 @@ const deleteMessage = () => {
       :robot-id="currentChat?.id"
       :is-owner="isOwnerOfRobot"
       @close="robotConfigDialogVisible = false"
+    />
+
+    <!-- 转发对话框 -->
+    <ForwardDialog
+      v-model="forwardDialogVisible"
+      :message="messageToForward"
+      @forward="handleForwardConfirm"
+      @close="forwardDialogVisible = false"
     />
 
     <!-- 消息右键菜单 -->
