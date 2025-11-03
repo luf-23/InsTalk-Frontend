@@ -95,15 +95,21 @@ export const conversationStore = defineStore('conversation', () => {
      * 删除会话
      * @param {Number} id - 会话 ID
      * @param {String} type - 会话类型
+     * @param {Boolean} silent - 是否静默删除（不显示提示）
      */
-    const deleteConversation = (id, type) => {
+    const deleteConversation = (id, type, silent = false) => {
         const index = conversations.value.findIndex(
             conv => conv.id === id && conv.type === type
         );
         
         if (index !== -1) {
             conversations.value.splice(index, 1);
-            ElMessage.success('会话已删除');
+            
+            if (!silent) {
+                ElMessage.success('会话已删除');
+            }
+            
+            console.log(`已删除会话 - ID: ${id}, 类型: ${type}`);
         }
     };
 

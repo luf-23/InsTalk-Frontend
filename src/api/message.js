@@ -107,3 +107,36 @@ export const markMessageListAsReadService = (params) => {
         }
     });
 };
+
+// 撤回消息(params传messageId)
+export const revokeMessageService = (params) => {
+    return request({
+        url: '/message/revoke',
+        method: 'POST',
+        params,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+    });
+};
+
+// 删除消息(params传messageId) - 客户端本地删除
+export const deleteMessageService = (messageId) => {
+    // 注意: 这是客户端本地删除，不调用后端API
+    // 实际业务中可能需要调用后端API来删除
+    return Promise.resolve({ success: true, messageId });
+};
+
+// 转发消息(data传{messageId, receiverId?, groupId?})
+export const forwardMessageService = (data) => {
+    // 注意: 后端可能没有专门的转发接口
+    // 这里直接使用发送消息接口来实现转发
+    return request({
+        url: '/message/send',
+        method: 'POST',
+        data,
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    });
+};

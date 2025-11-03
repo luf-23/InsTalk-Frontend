@@ -169,17 +169,27 @@ const startChat = () => {
 
 const confirmDelete = () => {
   ElMessageBox.confirm(
-    `确定要删除好友 ${friendInfo.value.username} 吗？`,
+    `确定要删除好友 ${friendInfo.value.username} 吗？删除后将同时清空与该好友的聊天会话。`,
     '删除好友',
     {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
+      distinguishCancelAndClose: true
     }
-  ).then(() => {
-    emit('delete', props.friendId);
-    visible.value = false;
-  }).catch(() => {});
+  ).then(async () => {
+    // 调用 store 中的删除方法
+    const success = await friendStore.deleteFriend(props.friendId);
+    if (success) {
+      // 删除成功，发出 delete 事件并关闭对话框
+      emit('delete', props.friendId);
+      visible.value = false;
+    }
+  }).catch((action) => {
+    if (action === 'cancel') {
+      console.log('用户取消删除好友');
+    }
+  });
 };
 
 const locateMessage = (message) => {

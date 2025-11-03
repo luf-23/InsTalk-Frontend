@@ -372,16 +372,21 @@ const rejectFriendRequest = async (requestId) => {
 // 删除好友确认
 const deleteFriendConfirm = (friend) => {
   ElMessageBox.confirm(
-    `确定要删除好友 ${friend.username} 吗？`,
+    `确定要删除好友 ${friend.username} 吗？删除后将同时清空与该好友的聊天会话。`,
     '删除好友',
     {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
+      distinguishCancelAndClose: true
     }
   ).then(() => {
     deleteFriend(friend.id);
-  }).catch(() => {});
+  }).catch((action) => {
+    if (action === 'cancel') {
+      console.log('用户取消删除好友');
+    }
+  });
 };
 
 // 删除好友
@@ -533,7 +538,9 @@ const handleFriendStartChat = (friend) => {
 
 // 处理从好友信息对话框删除好友
 const handleFriendDelete = async (friendId) => {
-  await deleteFriend(friendId);
+  // 好友信息对话框已经调用了 deleteFriend，这里不需要再次调用
+  // 只需要确保 UI 正常更新即可
+  console.log(`好友 ${friendId} 已被删除`);
 };
 
 // 显示群组信息
