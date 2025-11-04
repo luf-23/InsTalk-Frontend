@@ -75,6 +75,9 @@ class WebSocketService {
                         case 'FRIEND_DELETED':
                             this.triggerHandler('friendDeleted', data.data);
                             break;
+                        case 'GROUP_DELETED':
+                            this.triggerHandler('groupDeleted', data.data);
+                            break;
                         default:
                             console.warn('未知的消息类型:', data.type);
                     }
@@ -175,7 +178,7 @@ class WebSocketService {
 
     /**
      * 注册消息处理器
-     * @param {String} type - 消息类型：'open' | 'close' | 'error' | 'newMessage' | 'messageRecall' | 'onlineStatus' | 'friendDeleted'
+     * @param {String} type - 消息类型：'open' | 'close' | 'error' | 'newMessage' | 'messageRecall' | 'onlineStatus' | 'friendDeleted' | 'groupDeleted'
      * @param {Function} handler - 处理函数
      */
     on(type, handler) {

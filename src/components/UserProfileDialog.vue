@@ -226,8 +226,8 @@ const showBindEmail = () => {
             </div>
             <div class="info-item">
               <span class="info-label">角色</span>
-              <el-tag :type="userInfo.role === 'admin' ? 'danger' : 'info'">
-                {{ userInfo.role === 'admin' ? '管理员' : '用户' }}
+              <el-tag :type="'info'">
+                {{ userInfo.role === 'ADMIN' ? '管理员' : userInfo.role === 'ROBOT' ? '机器人' : '用户' }}
               </el-tag>
             </div>
             <div class="info-item">

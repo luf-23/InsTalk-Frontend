@@ -1,6 +1,16 @@
 import request from "@/util/request";
 
-// 获取用户信息params传{id:xxx}
+
+/*
+@Data
+public class UserInfoVO {
+    private Long id;
+    private String username;
+    private String signature;
+    private String avatar;
+}
+*/
+// 获取用户信息params传{id:xxx} 除了自己之外的用户信息
 export const getUserInfoService = (params) => {
     return request({
         url: '/user/info',

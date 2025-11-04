@@ -5,9 +5,13 @@ import {
     joinGroupService,
     getGroupListWithMembersService,
     getMyGroupListWithMembersService,
-    updateGroupInfoService
+    updateGroupInfoService,
+    leaveGroupService,
+    deleteGroupService
 } from "@/api/group";
 import { useUserInfoStore } from "@/store/userInfo";
+import { conversationStore } from "@/store/conversation";
+import { messageStore } from "@/store/message";
 import { ElMessage } from "element-plus";
 
 export const groupStore = defineStore('group', () => {
@@ -165,6 +169,74 @@ export const groupStore = defineStore('group', () => {
         }
     };
 
+    // 退出群组
+    const leaveGroup = async (groupId) => {
+        try {
+            // 调用 API 退出群组
+            await leaveGroupService({ groupId });
+            
+            // 从本地 allGroups 中移除该群组
+            const groupIndex = allGroups.value.findIndex(g => g.id === groupId);
+            if (groupIndex !== -1) {
+                allGroups.value.splice(groupIndex, 1);
+            }
+            
+            // 如果是自己创建的群组，也从 myGroups 中移除（虽然群主一般不会退出）
+            const myGroupIndex = myGroups.value.findIndex(g => g.id === groupId);
+            if (myGroupIndex !== -1) {
+                myGroups.value.splice(myGroupIndex, 1);
+            }
+            
+            ElMessage.success('已退出群组');
+            return true;
+        } catch (error) {
+            console.error('退出群组失败:', error);
+            ElMessage.error('退出群组失败');
+            return false;
+        }
+    };
+
+    // 解散群组（仅群主可操作）
+    const deleteGroup = async (groupId) => {
+        try {
+            // 调用 API 解散群组
+            await deleteGroupService({ groupId });
+            
+            // 从本地 allGroups 中移除该群组
+            const groupIndex = allGroups.value.findIndex(g => g.id === groupId);
+            if (groupIndex !== -1) {
+                allGroups.value.splice(groupIndex, 1);
+            }
+            
+            // 从 myGroups 中移除该群组
+            const myGroupIndex = myGroups.value.findIndex(g => g.id === groupId);
+            if (myGroupIndex !== -1) {
+                myGroups.value.splice(myGroupIndex, 1);
+            }
+            
+            // 清理相关会话（解散群组后，静默删除与该群组的会话）
+            const convStore = conversationStore();
+            convStore.deleteConversation(groupId, 'group', true);
+            
+            // 如果当前正在与该群组聊天，清空当前聊天
+            const msgStore = messageStore();
+            if (msgStore.currentChat && 
+                msgStore.currentChat.id === groupId && 
+                msgStore.chatType === 'group') {
+                msgStore.setCurrentChat(null, 'group');
+            }
+            
+            ElMessage.success('群组已解散');
+            console.log(`已解散群组 ID: ${groupId}，并清理相关会话`);
+            
+            return true;
+        } catch (error) {
+            console.error('解散群组失败:', error);
+            ElMessage.error('解散群组失败');
+            return false;
+        }
+    };
+
     // 启动轮询
     const startPolling = () => {
         // 检查是否启用轮询
@@ -254,6 +326,8 @@ export const groupStore = defineStore('group', () => {
         joinGroup,
         isGroupMember,
         updateGroupInfo,
+        leaveGroup,
+        deleteGroup,
         clearGroupData,
         startPolling,
         stopPolling,

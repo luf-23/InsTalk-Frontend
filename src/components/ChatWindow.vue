@@ -13,6 +13,7 @@ import { groupStore } from '@/store/group';
 import { onlineStatusStore } from '@/store/onlineStatus';
 import { useUserInfoStore } from '@/store/userInfo';
 import { ossClient } from '@/util/oss';
+import { getUserInfoService } from '@/api/user';
 import FriendInfoDialog from './FriendInfoDialog.vue';
 import GroupInfoDialog from './GroupInfoDialog.vue';
 import ImageViewer from './ImageViewer.vue';
@@ -222,6 +223,15 @@ const friendInfo = computed(() => {
   if (!currentChat.value || chatType.value !== 'friend') return {};
   
   const friend = friendStore.friends.find(f => f.id === currentChat.value.id);
+  
+  // 如果找到好友信息，缓存到 messageStore
+  if (friend && friend.id && friend.username) {
+    msgStore.userInfoCache[friend.id] = {
+      username: friend.username,
+      avatar: friend.avatar || ''
+    };
+  }
+  
   return friend || {};
 });
 
@@ -238,7 +248,19 @@ const groupMembers = computed(() => {
   if (!currentChat.value || chatType.value !== 'group') return [];
   
   const group = gStore.allGroups.find(g => g.id === currentChat.value.id);
-  return group?.members || [];
+  const members = group?.members || [];
+  
+  // 将当前群组成员信息缓存到 messageStore
+  members.forEach(member => {
+    if (member.id && member.username) {
+      msgStore.userInfoCache[member.id] = {
+        username: member.username,
+        avatar: member.avatar || ''
+      };
+    }
+  });
+  
+  return members;
 });
 
 
@@ -320,6 +342,51 @@ const isOwnMessage = (message) => {
   return message.senderId === currentUserId.value;
 };
 
+// 正在获取用户信息的 ID 集合（防止重复请求）
+const fetchingUserIds = new Set();
+
+// 异步获取用户信息（如果缓存中没有则从 API 获取）
+const fetchUserInfoIfNeeded = async (userId) => {
+  // 如果缓存中已有，直接返回
+  if (msgStore.userInfoCache[userId]) {
+    return msgStore.userInfoCache[userId];
+  }
+  
+  // 如果是当前用户自己，不需要获取
+  if (userId === currentUserId.value) {
+    return null;
+  }
+  
+  // 如果正在获取中，避免重复请求
+  if (fetchingUserIds.has(userId)) {
+    return null;
+  }
+  
+  // 标记为正在获取
+  fetchingUserIds.add(userId);
+  
+  // 从 API 获取用户信息
+  try {
+    const userInfo = await getUserInfoService({ id: userId });
+    if (userInfo) {
+      // 存入缓存
+      msgStore.userInfoCache[userId] = {
+        username: userInfo.username,
+        avatar: userInfo.avatar || '',
+        signature: userInfo.signature || ''
+      };
+      return msgStore.userInfoCache[userId];
+    }
+  } catch (error) {
+    console.error(`获取用户 ${userId} 信息失败:`, error);
+  } finally {
+    // 移除正在获取的标记
+    fetchingUserIds.delete(userId);
+  }
+  
+  return null;
+};
+
 // 获取发送者头像
 const getSenderAvatar = (message) => {
   if (isOwnMessage(message)) return userAvatar.value;
@@ -327,8 +394,20 @@ const getSenderAvatar = (message) => {
   if (chatType.value === 'friend') {
     return friendInfo.value.avatar;
   } else {
+    // 先尝试从群组成员中查找
     const sender = groupMembers.value.find(member => member.id === message.senderId);
-    return sender?.avatar || '';
+    if (sender?.avatar) {
+      return sender.avatar;
+    }
+    
+    // 如果找不到，从缓存中查找（用于已退群的用户）
+    const cachedInfo = msgStore.userInfoCache[message.senderId];
+    if (!cachedInfo) {
+      // 缓存中没有，异步获取（不阻塞渲染）
+      fetchUserInfoIfNeeded(message.senderId);
+      return ''; // 暂时返回空，等待异步获取完成后会自动更新
+    }
+    return cachedInfo.avatar || '';
   }
 };
 
@@ -339,8 +418,20 @@ const getSenderInitials = (message) => {
   if (chatType.value === 'friend') {
     return getInitials(friendInfo.value.username);
   } else {
+    // 先尝试从群组成员中查找
     const sender = groupMembers.value.find(member => member.id === message.senderId);
-    return getInitials(sender?.username || '?');
+    if (sender?.username) {
+      return getInitials(sender.username);
+    }
+    
+    // 如果找不到，从缓存中查找（用于已退群的用户）
+    const cachedInfo = msgStore.userInfoCache[message.senderId];
+    if (!cachedInfo) {
+      // 缓存中没有，异步获取（不阻塞渲染）
+      fetchUserInfoIfNeeded(message.senderId);
+      return '?'; // 暂时返回问号，等待异步获取完成后会自动更新
+    }
+    return getInitials(cachedInfo.username || '已退群');
   }
 };
 
@@ -348,8 +439,25 @@ const getSenderInitials = (message) => {
 const getSenderName = (message) => {
   if (isOwnMessage(message)) return '我';
   
+  // 先尝试从群组成员中查找
   const sender = groupMembers.value.find(member => member.id === message.senderId);
-  return sender?.username || '未知用户';
+  if (sender?.username) {
+    return sender.username;
+  }
+  
+  // 如果找不到，从缓存中查找（用于已退群的用户）
+  const cachedInfo = msgStore.userInfoCache[message.senderId];
+  if (!cachedInfo) {
+    // 缓存中没有，异步获取（不阻塞渲染）
+    fetchUserInfoIfNeeded(message.senderId);
+    return '加载中...'; // 暂时返回加载中，等待异步获取完成后会自动更新
+  }
+  
+  if (cachedInfo.username) {
+    return `${cachedInfo.username}（已退群）`;
+  }
+  
+  return '未知用户';
 };
 
 // 格式化日期
@@ -502,6 +610,12 @@ const isLastMessageOfGroup = (message, index) => {
 const isGroupAdmin = (userId) => {
   if (!groupInfo.value) return false;
   return groupInfo.value.admins?.includes(userId) || false;
+};
+
+// 检查是否为群主
+const isGroupOwner = (userId) => {
+  if (!groupInfo.value) return false;
+  return groupInfo.value.ownerId === userId;
 };
 
 // 判断是否可以移除成员
@@ -1034,15 +1148,95 @@ const handleSendPrivateMessage = (member) => {
 };
 
 const handleLeaveGroup = (groupId) => {
-  ElMessage.info('退出群组功能开发中...');
-  // TODO: 实现退出群组功能
+  // 群组信息对话框中已经处理了退出逻辑和会话删除
+  // 这里只需要检查当前聊天是否是被退出的群组
+  if (currentChat.value && currentChat.value.id === groupId && chatType.value === 'group') {
+    // 清空当前聊天
+    msgStore.currentChat = null;
+    msgStore.chatType = null;
+    
+    // 移动端返回列表视图
+    if (props.isMobile) {
+      backToList();
+    }
+  }
 };
 
 // 退出群组（从下拉菜单触发）
-const leaveGroup = () => {
-  if (chatType.value === 'group') {
-    groupInfoDialogVisible.value = true;
-    // 可以在对话框中进行退出操作
+const leaveGroup = async () => {
+  if (chatType.value !== 'group' || !currentChat.value) {
+    return;
+  }
+  
+  // 如果是群主，执行解散逻辑
+  if (isGroupOwner(currentUserId.value)) {
+    try {
+      await ElMessageBox.confirm(
+        '解散群组后将无法恢复，确定要解散该群组吗？',
+        '解散群组',
+        {
+          confirmButtonText: '确定解散',
+          cancelButtonText: '取消',
+          type: 'error',
+        }
+      );
+      
+      // 调用 store 方法解散群组
+      const success = await gStore.deleteGroup(currentChat.value.id);
+      
+      if (success) {
+        // 删除本地会话
+        convStore.deleteConversation(currentChat.value.id, 'group', true);
+        
+        // 清空当前聊天
+        msgStore.currentChat = null;
+        msgStore.chatType = null;
+        
+        // 移动端返回列表视图
+        if (props.isMobile) {
+          backToList();
+        }
+      }
+    } catch (error) {
+      if (error !== 'cancel') {
+        console.error('解散群组失败:', error);
+      }
+    }
+    return;
+  }
+  
+  // 普通成员执行退出逻辑
+  try {
+    await ElMessageBox.confirm(
+      '确定要退出该群组吗？退出后将无法接收群消息。',
+      '退出群组',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    // 调用 store 方法退出群组
+    const success = await gStore.leaveGroup(currentChat.value.id);
+    
+    if (success) {
+      // 删除本地会话
+      convStore.deleteConversation(currentChat.value.id, 'group', true);
+      
+      // 清空当前聊天
+      msgStore.currentChat = null;
+      msgStore.chatType = null;
+      
+      // 移动端返回列表视图
+      if (props.isMobile) {
+        backToList();
+      }
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('退出群组失败:', error);
+    }
   }
 };
 
@@ -1426,7 +1620,8 @@ const deleteMessage = async () => {
                   <el-icon><Delete /></el-icon> 清空AI历史
                 </el-dropdown-item>
                 <el-dropdown-item v-if="currentChat.type === 'group'" @click="leaveGroup">
-                  <el-icon><RemoveFilled /></el-icon> 退出群组
+                  <el-icon><RemoveFilled /></el-icon> 
+                  {{ isGroupOwner(currentUserId) ? '解散群组' : '退出群组' }}
                 </el-dropdown-item>
               </el-dropdown-menu>
             </template>
