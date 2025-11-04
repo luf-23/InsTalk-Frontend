@@ -7,9 +7,11 @@ import {
 } from '@element-plus/icons-vue';
 import { groupStore } from '@/store/group';
 import { messageStore } from '@/store/message';
+import { conversationStore } from '@/store/conversation';
 import { onlineStatusStore } from '@/store/onlineStatus';
 import { useUserInfoStore } from '@/store/userInfo';
 import { updateGroupInfoService } from '@/api/group';
+import { getUserInfoService } from '@/api/user';
 import { ossClient } from '@/util/oss';
 import ImageViewer from './ImageViewer.vue';
 
@@ -32,6 +34,7 @@ const emit = defineEmits(['update:modelValue', 'close', 'sendMessage', 'leave'])
 // Store
 const gStore = groupStore();
 const msgStore = messageStore();
+const convStore = conversationStore();
 const onlineStore = onlineStatusStore();
 const userInfoStore = useUserInfoStore();
 
@@ -224,11 +227,69 @@ const isUserOnline = (userId) => {
   return onlineStore.isUserOnline(userId);
 };
 
+// 正在获取用户信息的 ID 集合（防止重复请求）
+const fetchingUserIds = new Set();
+
+// 异步获取用户信息（如果缓存中没有则从 API 获取）
+const fetchUserInfoIfNeeded = async (userId) => {
+  // 如果缓存中已有，直接返回
+  if (msgStore.userInfoCache[userId]) {
+    return msgStore.userInfoCache[userId];
+  }
+  
+  // 如果是当前用户自己，不需要获取
+  if (userId === currentUserId.value) {
+    return null;
+  }
+  
+  // 如果正在获取中，避免重复请求
+  if (fetchingUserIds.has(userId)) {
+    return null;
+  }
+  
+  // 标记为正在获取
+  fetchingUserIds.add(userId);
+  
+  // 从 API 获取用户信息
+  try {
+    const userInfo = await getUserInfoService({ id: userId });
+    if (userInfo) {
+      // 存入缓存
+      msgStore.userInfoCache[userId] = {
+        username: userInfo.username,
+        avatar: userInfo.avatar || '',
+        signature: userInfo.signature || ''
+      };
+      return msgStore.userInfoCache[userId];
+    }
+  } catch (error) {
+    console.error(`获取用户 ${userId} 信息失败:`, error);
+  } finally {
+    // 移除正在获取的标记
+    fetchingUserIds.delete(userId);
+  }
+  
+  return null;
+};
+
 const getSenderName = (message) => {
   if (message.senderId === currentUserId.value) return '我';
   
+  // 先尝试从群组成员中查找
   const sender = groupMembers.value.find(m => m.id === message.senderId);
-  return sender?.username || '未知用户';
+  if (sender?.username) {
+    return sender.username;
+  }
+  
+  // 如果找不到，从缓存中查找（用于已退群的用户）
+  const cachedInfo = msgStore.userInfoCache[message.senderId];
+  if (!cachedInfo) {
+    // 缓存中没有，异步获取（不阻塞渲染）
+    fetchUserInfoIfNeeded(message.senderId);
+    return '加载中...'; // 暂时返回加载中，等待异步获取完成后会自动更新
+  }
+  
+  return cachedInfo.username || '未知用户';
 };
 
 const getFileName = (url) => {
@@ -450,35 +511,75 @@ const saveGroupSettings = async () => {
   }
 };
 
-const confirmLeaveGroup = () => {
-  ElMessageBox.confirm(
-    '确定要退出该群组吗？',
-    '退出群组',
-    {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
+const confirmLeaveGroup = async () => {
+  // 如果是群主，执行解散逻辑
+  if (isGroupOwner(currentUserId.value)) {
+    return confirmDismissGroup();
+  }
+  
+  // 普通成员执行退出逻辑
+  try {
+    await ElMessageBox.confirm(
+      '确定要退出该群组吗？退出后将无法接收群消息。',
+      '退出群组',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    
+    // 调用 store 方法退出群组
+    const success = await gStore.leaveGroup(props.groupId);
+    
+    if (success) {
+      // 删除本地会话
+      convStore.deleteConversation(props.groupId, 'group', true);
+      
+      // 关闭对话框
+      visible.value = false;
+      
+      // 触发 leave 事件，让父组件处理（例如切换到其他聊天）
+      emit('leave', props.groupId);
     }
-  ).then(() => {
-    emit('leave', props.groupId);
-    visible.value = false;
-  }).catch(() => {});
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('退出群组失败:', error);
+    }
+  }
 };
 
-const confirmDismissGroup = () => {
-  ElMessageBox.confirm(
-    '解散群组后将无法恢复，确定要解散该群组吗？',
-    '解散群组',
-    {
-      confirmButtonText: '确定解散',
-      cancelButtonText: '取消',
-      type: 'error',
-      confirmButtonClass: 'el-button--danger'
+const confirmDismissGroup = async () => {
+  try {
+    await ElMessageBox.confirm(
+      '解散群组后将无法恢复，确定要解散该群组吗？',
+      '解散群组',
+      {
+        confirmButtonText: '确定解散',
+        cancelButtonText: '取消',
+        type: 'error',
+        confirmButtonClass: 'el-button--danger'
+      }
+    );
+    
+    // 调用 store 方法解散群组
+    const success = await gStore.deleteGroup(props.groupId);
+    
+    if (success) {
+      // 删除本地会话
+      convStore.deleteConversation(props.groupId, 'group', true);
+      
+      // 关闭对话框
+      visible.value = false;
+      
+      // 触发 leave 事件，让父组件处理（例如切换到其他聊天）
+      emit('leave', props.groupId);
     }
-  ).then(() => {
-    ElMessage.info('解散群组功能开发中...');
-    // TODO: 调用API解散群组
-  }).catch(() => {});
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('解散群组失败:', error);
+    }
+  }
 };
 
 // 监听对话框打开
@@ -767,9 +868,7 @@ watch(visible, (newVal) => {
             <div class="danger-zone">
               <h4>危险区域</h4>
               <el-space direction="vertical">
-                <el-button type="warning" plain @click="confirmLeaveGroup">
-                  <el-icon><RemoveFilled /></el-icon> 退出群组
-                </el-button>
+                <!-- 群主显示解散按钮 -->
                 <el-button 
                   v-if="isGroupOwner(currentUserId)" 
                   type="danger" 
@@ -777,6 +876,15 @@ watch(visible, (newVal) => {
                   @click="confirmDismissGroup"
                 >
                   <el-icon><Delete /></el-icon> 解散群组
+                </el-button>
+                <!-- 普通成员显示退出按钮 -->
+                <el-button 
+                  v-else
+                  type="warning" 
+                  plain 
+                  @click="confirmLeaveGroup"
+                >
+                  <el-icon><RemoveFilled /></el-icon> 退出群组
                 </el-button>
               </el-space>
             </div>

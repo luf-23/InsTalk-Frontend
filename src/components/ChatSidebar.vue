@@ -499,10 +499,8 @@ const searchGroups = async () => {
 // 加入群组
 const joinGroup = async (groupId) => {
   const success = await gStore.joinGroup(groupId);
-  if (success) {
-    // joinGroup 方法已经更新了 store 中的群组列表,不需要重新加载
-    ElMessage.success('已成功加入群组');
-  }
+  // joinGroup 方法已经更新了 store 中的群组列表,不需要重新加载
+  // 提示消息已在 store 中处理，不需要重复提示
 };
 
 // 检查是否是群组成员
@@ -668,7 +666,9 @@ const handleChatMenuSelect = (action) => {
       </el-avatar>
       <div class="user-info" @click="showUserProfile">
         <h3>{{ username }}</h3>
-        <el-tag size="small" type="info">{{ userRole === 'admin' ? '管理员' : '用户' }}</el-tag>
+        <el-tag size="small" :type='info'>
+          {{ userRole === 'ADMIN' ? '管理员' : userRole === 'ROBOT' ? 'AI助手' : '用户' }}
+        </el-tag>
       </div>
       <el-dropdown trigger="click">
         <el-icon class="more-icon"><More /></el-icon>

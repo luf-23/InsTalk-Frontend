@@ -175,3 +175,30 @@ export const updateGroupInfoService = (data) => {
         },
     });
 }
+
+
+
+export const leaveGroupService = (params) => {
+    return request({
+        url: '/group/leave',
+        method: 'post',
+        params,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+    });
+};
+
+
+
+export const deleteGroupService = (params) => {
+    return request({
+        url: '/group/delete',
+        method: 'post',
+        params,
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+    });
+};
+

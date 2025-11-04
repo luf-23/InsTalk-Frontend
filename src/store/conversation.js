@@ -47,6 +47,26 @@ export const conversationStore = defineStore('conversation', () => {
     const createOrUpdateConversation = (params) => {
         const { id, type, lastMessage = null, isNewMessage = false } = params;
         
+        // 如果是群组会话，检查群组是否存在（用户是否还在群组中）
+        if (type === 'group') {
+            const gStore = groupStore();
+            const groupExists = gStore.allGroups.some(g => g.id === id);
+            if (!groupExists) {
+                console.log(`无法创建或更新会话，群组不存在或已退出，群组 ID: ${id}`);
+                return;
+            }
+        }
+        
+        // 如果是好友会话，检查好友是否存在
+        if (type === 'friend') {
+            const friendStore = friendshipStore();
+            const friendExists = friendStore.friends.some(f => f.id === id);
+            if (!friendExists) {
+                console.log(`无法创建或更新会话，好友不存在或已删除，好友 ID: ${id}`);
+                return;
+            }
+        }
+        
         // 查找现有会话
         const existingIndex = conversations.value.findIndex(
             conv => conv.id === id && conv.type === type
@@ -211,6 +231,8 @@ export const conversationStore = defineStore('conversation', () => {
         }
         
         const msgStore = messageStore();
+        const friendStore = friendshipStore();
+        const gStore = groupStore();
         const currentUserId = getCurrentUserId();
         
         // 创建会话映射
@@ -225,6 +247,14 @@ export const conversationStore = defineStore('conversation', () => {
                 convKey = `group_${message.groupId}`;
                 convId = message.groupId;
                 convType = 'group';
+                
+                // 检查该群组是否还存在（用户是否还在群组中）
+                const groupExists = gStore.allGroups.some(g => g.id === message.groupId);
+                if (!groupExists) {
+                    // 群组不存在（已退出），跳过该消息
+                    console.log(`跳过已退出群组的消息，群组 ID: ${message.groupId}`);
+                    return;
+                }
             } else {
                 // 好友消息：找到对方的 ID
                 const otherId = message.senderId === currentUserId 
@@ -233,6 +263,14 @@ export const conversationStore = defineStore('conversation', () => {
                 convKey = `friend_${otherId}`;
                 convId = otherId;
                 convType = 'friend';
+                
+                // 检查该好友是否还存在（已删除的好友消息会被自动清理，这里作为额外保护）
+                const friendExists = friendStore.friends.some(f => f.id === otherId);
+                if (!friendExists) {
+                    // 好友不存在（已删除），跳过该消息
+                    console.log(`跳过已删除好友的消息，好友 ID: ${otherId}`);
+                    return;
+                }
             }
             
             // 获取或创建会话信息
@@ -368,6 +406,45 @@ export const conversationStore = defineStore('conversation', () => {
         conversations.value = [];
     };
 
+    /**
+     * 清理无效的会话（已退出的群组、已删除的好友）
+     * 用于定期清理或在需要时手动调用
+     */
+    const cleanupInvalidConversations = () => {
+        const friendStore = friendshipStore();
+        const gStore = groupStore();
+        
+        let removedCount = 0;
+        
+        // 过滤出有效的会话
+        conversations.value = conversations.value.filter(conv => {
+            if (conv.type === 'group') {
+                // 检查群组是否存在
+                const groupExists = gStore.allGroups.some(g => g.id === conv.id);
+                if (!groupExists) {
+                    console.log(`清理已退出群组的会话，群组 ID: ${conv.id}`);
+                    removedCount++;
+                    return false;
+                }
+            } else if (conv.type === 'friend') {
+                // 检查好友是否存在
+                const friendExists = friendStore.friends.some(f => f.id === conv.id);
+                if (!friendExists) {
+                    console.log(`清理已删除好友的会话，好友 ID: ${conv.id}`);
+                    removedCount++;
+                    return false;
+                }
+            }
+            return true;
+        });
+        
+        if (removedCount > 0) {
+            console.log(`清理了 ${removedCount} 个无效会话`);
+        }
+        
+        return removedCount;
+    };
+
     return {
         conversations,
         sortedConversations,
@@ -379,7 +456,8 @@ export const conversationStore = defineStore('conversation', () => {
         syncConversationsFromMessages,
         getConversationName,
         getConversationAvatar,
-        clearConversationData
+        clearConversationData,
+        cleanupInvalidConversations
     };
 }, {
     persist: {

@@ -4,6 +4,7 @@ import { sendMessageService, getMessageHistoryService, revokeMessageService, del
 import { useUserInfoStore } from "@/store/userInfo";
 import { conversationStore } from "@/store/conversation";
 import { friendshipStore } from "@/store/friendship";
+import { groupStore } from "@/store/group";
 import { ElMessage } from "element-plus";
 import websocketService from "@/util/websocket";
 import { useAuthStore } from "@/store/auth";
@@ -36,6 +37,11 @@ export const messageStore = defineStore('message', () => {
     let wsMessageRecallHandler = null;
     let wsOnlineStatusHandler = null;
     let wsFriendDeletedHandler = null;
+    let wsGroupDeletedHandler = null;
+    
+    // 用户信息缓存 - 用于保存已经退群的用户信息
+    // key: userId, value: { username, avatar }
+    const userInfoCache = ref({});
 
     // 获取消息历史（强制从服务器刷新）
     const fetchMessageHistory = async (force = false) => {
@@ -186,11 +192,48 @@ export const messageStore = defineStore('message', () => {
             }
         };
 
+        // 注册群组解散处理器
+        wsGroupDeletedHandler = (data) => {
+            console.log('收到群组解散通知:', data);
+            const groupId = data.groupId;
+            
+            if (groupId) {
+                // 从群组列表中移除该群组
+                const gStore = groupStore();
+                const groupIndex = gStore.allGroups.findIndex(g => g.id === groupId);
+                if (groupIndex !== -1) {
+                    gStore.allGroups.splice(groupIndex, 1);
+                    console.log(`群组 ${groupId} 已被解散`);
+                }
+                
+                // 如果是自己创建的群组，也从 myGroups 中移除
+                const myGroupIndex = gStore.myGroups.findIndex(g => g.id === groupId);
+                if (myGroupIndex !== -1) {
+                    gStore.myGroups.splice(myGroupIndex, 1);
+                }
+                
+                // 删除与该群组的会话
+                const convStore = conversationStore();
+                convStore.deleteConversation(groupId, 'group', true);
+                
+                // 如果正在与该群组聊天，清空当前聊天
+                if (currentChat.value && 
+                    currentChat.value.id === groupId && 
+                    chatType.value === 'group') {
+                    setCurrentChat(null, 'group');
+                }
+                
+                // 提示用户
+                ElMessage.warning('该群组已被解散');
+            }
+        };
+
         // 注册处理器
         websocketService.on('newMessage', wsMessageHandler);
         websocketService.on('messageRecall', wsMessageRecallHandler);
         websocketService.on('onlineStatus', wsOnlineStatusHandler);
         websocketService.on('friendDeleted', wsFriendDeletedHandler);
+        websocketService.on('groupDeleted', wsGroupDeletedHandler);
         websocketService.on('open', () => {
             wsConnected.value = true;
             console.log('WebSocket 已连接');
@@ -224,6 +267,10 @@ export const messageStore = defineStore('message', () => {
         if (wsFriendDeletedHandler) {
             websocketService.off('friendDeleted', wsFriendDeletedHandler);
             wsFriendDeletedHandler = null;
+        }
+        if (wsGroupDeletedHandler) {
+            websocketService.off('groupDeleted', wsGroupDeletedHandler);
+            wsGroupDeletedHandler = null;
         }
 
         // 断开连接
@@ -363,6 +410,8 @@ export const messageStore = defineStore('message', () => {
             messages: false,
             send: false
         };
+        // 清空用户信息缓存
+        userInfoCache.value = {};
     };
 
     // 删除消息（本地删除）
@@ -532,6 +581,7 @@ export const messageStore = defineStore('message', () => {
         chatType,
         loading,
         wsConnected,
+        userInfoCache,
         initMessages,
         fetchMessageHistory,
         sendMessage,
@@ -549,6 +599,6 @@ export const messageStore = defineStore('message', () => {
     persist: {
         key: 'instalk-messages',
         storage: localStorage,
-        paths: ['messages', 'currentChat', 'chatType']
+        paths: ['messages', 'currentChat', 'chatType', 'userInfoCache']
     }
 });

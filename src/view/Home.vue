@@ -70,6 +70,9 @@ onMounted(async () => {
   
   // 从消息同步会话列表（初始化或恢复会话）
   convStore.syncConversationsFromMessages();
+  
+  // 清理无效的会话（已退出的群组、已删除的好友）
+  convStore.cleanupInvalidConversations();
 
   // 启动好友和申请列表轮询（30秒间隔）- 保留用于好友请求等非实时性要求不高的数据
   friendStore.startPolling();
