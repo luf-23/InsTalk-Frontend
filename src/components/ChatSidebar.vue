@@ -174,10 +174,58 @@ const createGroupRules = {
 };
 const uploadingAvatar = ref(false);
 
-// 监听搜索查询
-watch(searchQuery, (newValue) => {
-  // 实现本地搜索逻辑
-  // TODO: 根据搜索词过滤聊天、好友和群组
+// 过滤后的聊天列表
+const filteredChatList = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return chatList.value;
+  }
+  const query = searchQuery.value.toLowerCase();
+  return chatList.value.filter(chat => 
+    chat.name?.toLowerCase().includes(query)
+  );
+});
+
+// 过滤后的好友列表
+const filteredFriends = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return friends.value;
+  }
+  const query = searchQuery.value.toLowerCase();
+  return friends.value.filter(friend => 
+    friend.username?.toLowerCase().includes(query) ||
+    friend.signature?.toLowerCase().includes(query)
+  );
+});
+
+// 过滤后的群组列表
+const filteredCreatedGroups = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return createdGroups.value;
+  }
+  const query = searchQuery.value.toLowerCase();
+  return createdGroups.value.filter(group => 
+    group.name?.toLowerCase().includes(query)
+  );
+});
+
+const filteredManagedGroups = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return managedGroups.value;
+  }
+  const query = searchQuery.value.toLowerCase();
+  return managedGroups.value.filter(group => 
+    group.name?.toLowerCase().includes(query)
+  );
+});
+
+const filteredJoinedGroups = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return joinedGroups.value;
+  }
+  const query = searchQuery.value.toLowerCase();
+  return joinedGroups.value.filter(group => 
+    group.name?.toLowerCase().includes(query)
+  );
 });
 
 // 切换选项卡
@@ -732,9 +780,9 @@ const handleChatMenuSelect = (action) => {
     <div class="list-container">
       <!-- 聊天列表 -->
       <div v-if="activeTab === 'chats'" class="chat-list">
-        <template v-if="chatList.length > 0">
+        <template v-if="filteredChatList.length > 0">
           <div
-            v-for="chat in chatList"
+            v-for="chat in filteredChatList"
             :key="`${chat.type}_${chat.id}`"
             class="chat-item"
             :class="{ active: isChatActive(chat), 'robot-chat': chat.role === 'ROBOT' }"
@@ -794,9 +842,9 @@ const handleChatMenuSelect = (action) => {
         
         <!-- 好友列表 -->
         <div class="friend-list">
-          <template v-if="friends.length > 0">
+          <template v-if="filteredFriends.length > 0">
             <div
-              v-for="friend in friends"
+              v-for="friend in filteredFriends"
               :key="friend.id"
               class="friend-item"
               :class="{ 'robot-friend': friend.role === 'ROBOT' }"
@@ -859,12 +907,12 @@ const handleChatMenuSelect = (action) => {
           <div>
             <div class="group-category-header" @click="showCreatedGroups = !showCreatedGroups">
               <el-icon><Collection /></el-icon>
-              <span>我创建的群组 ({{ createdGroups.length }})</span>
+              <span>我创建的群组 ({{ filteredCreatedGroups.length }})</span>
               <el-icon><component :is="showCreatedGroups ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
             </div>
             <div v-show="showCreatedGroups">
-              <template v-if="createdGroups.length > 0">
-                <div v-for="group in createdGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
+              <template v-if="filteredCreatedGroups.length > 0">
+                <div v-for="group in filteredCreatedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
                   <el-avatar :size="36" shape="square" :src="group.avatar">
                     {{ getInitials(group.name) }}
                   </el-avatar>
@@ -894,12 +942,12 @@ const handleChatMenuSelect = (action) => {
           <div>
             <div class="group-category-header" @click="showManagedGroups = !showManagedGroups">
               <el-icon><Collection /></el-icon>
-              <span>我管理的群组 ({{ managedGroups.length }})</span>
+              <span>我管理的群组 ({{ filteredManagedGroups.length }})</span>
               <el-icon><component :is="showManagedGroups ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
             </div>
             <div v-show="showManagedGroups">
-              <template v-if="managedGroups.length > 0">
-                <div v-for="group in managedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
+              <template v-if="filteredManagedGroups.length > 0">
+                <div v-for="group in filteredManagedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
                   <el-avatar :size="36" shape="square" :src="group.avatar">
                     {{ getInitials(group.name) }}
                   </el-avatar>
@@ -929,12 +977,12 @@ const handleChatMenuSelect = (action) => {
           <div>
             <div class="group-category-header" @click="showJoinedGroups = !showJoinedGroups">
               <el-icon><Collection /></el-icon>
-              <span>我加入的群组 ({{ joinedGroups.length }})</span>
+              <span>我加入的群组 ({{ filteredJoinedGroups.length }})</span>
               <el-icon><component :is="showJoinedGroups ? 'ArrowDown' : 'ArrowRight'" /></el-icon>
             </div>
             <div v-show="showJoinedGroups">
-              <template v-if="joinedGroups.length > 0">
-                <div v-for="group in joinedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
+              <template v-if="filteredJoinedGroups.length > 0">
+                <div v-for="group in filteredJoinedGroups" :key="group.id" class="group-item" @click="startChat(group, 'group')">
                   <el-avatar :size="36" shape="square" :src="group.avatar">
                     {{ getInitials(group.name) }}
                   </el-avatar>
