@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick, onMounted } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { 
   ChatDotRound, More, Picture, Document, 
@@ -98,6 +98,8 @@ const searchDialogVisible = ref(false);
 const searchKeyword = ref('');
 const searchResults = ref([]);
 const searchLoading = ref(false);
+const searchInputRef = ref(null);
+let searchDebounceTimer = null;
 
 // 消息右键菜单相关
 const messageContextMenuVisible = ref(false);
@@ -321,10 +323,13 @@ onMounted(() => {
 });
 
 // 清理事件监听器
-import { onUnmounted } from 'vue';
 onUnmounted(() => {
   if (longPressTimer) {
     clearTimeout(longPressTimer);
+  }
+  // 清理搜索防抖计时器
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
   }
 });
 
@@ -1006,13 +1011,26 @@ const openSearchDialog = () => {
   searchDialogVisible.value = true;
   searchKeyword.value = '';
   searchResults.value = [];
+  
+  // 自动聚焦到搜索框
+  nextTick(() => {
+    if (searchInputRef.value) {
+      searchInputRef.value.focus();
+    }
+  });
 };
 
-// 搜索消息
+// 搜索消息（按钮点击或回车时调用）
 const handleSearch = () => {
   if (!searchKeyword.value.trim()) {
     ElMessage.warning('请输入搜索关键词');
     return;
+  }
+  
+  // 立即执行搜索（跳过防抖）
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = null;
   }
   
   searchLoading.value = true;
@@ -1044,7 +1062,54 @@ const handleSearch = () => {
 const clearSearch = () => {
   searchKeyword.value = '';
   searchResults.value = [];
+  // 清除防抖计时器
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = null;
+  }
 };
+
+// 实时搜索（带防抖）
+const performSearch = () => {
+  // 清除之前的计时器
+  if (searchDebounceTimer) {
+    clearTimeout(searchDebounceTimer);
+  }
+  
+  // 如果搜索词为空，清空结果
+  if (!searchKeyword.value.trim()) {
+    searchResults.value = [];
+    return;
+  }
+  
+  // 设置新的计时器，300ms 后执行搜索
+  searchDebounceTimer = setTimeout(() => {
+    searchLoading.value = true;
+    
+    try {
+      // 在当前聊天的消息中搜索
+      const keyword = searchKeyword.value.toLowerCase();
+      searchResults.value = messages.value.filter(message => {
+        // 只搜索文本消息
+        if (message.messageType !== 'TEXT') return false;
+        
+        // 检查消息内容是否包含关键词
+        const content = message.content.toLowerCase();
+        return content.includes(keyword);
+      });
+    } catch (error) {
+      console.error('搜索消息出错:', error);
+      ElMessage.error('搜索失败');
+    } finally {
+      searchLoading.value = false;
+    }
+  }, 300); // 300ms 防抖延迟
+};
+
+// 监听搜索关键词变化，实现实时搜索
+watch(searchKeyword, () => {
+  performSearch();
+});
 
 // 高亮关键词
 const highlightKeyword = (content) => {
@@ -2013,12 +2078,13 @@ const deleteMessage = async () => {
       v-model="searchDialogVisible"
       title="搜索消息"
       width="600px"
-      :close-on-click-modal="false"
+      :close-on-click-modal="true"
       class="search-dialog"
     >
       <div class="search-content">
         <div class="search-input-wrapper">
           <el-input
+            ref="searchInputRef"
             v-model="searchKeyword"
             placeholder="输入关键词搜索消息"
             clearable
@@ -3291,14 +3357,35 @@ const deleteMessage = async () => {
 }
 
 /* 搜索对话框样式 */
+.search-dialog :deep(.el-dialog) {
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.search-dialog :deep(.el-dialog__header) {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  margin: 0;
+  background-color: var(--el-fill-color-blank);
+}
+
+.search-dialog :deep(.el-dialog__title) {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
 .search-dialog :deep(.el-dialog__body) {
-  padding: 20px;
+  padding: 24px;
+  max-height: 70vh;
+  overflow: hidden;
 }
 
 .search-content {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  height: 100%;
 }
 
 .search-input-wrapper {
@@ -3312,15 +3399,46 @@ const deleteMessage = async () => {
   font-size: 15px;
 }
 
+.search-input :deep(.el-input__wrapper) {
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  transition: all 0.3s ease;
+}
+
+.search-input :deep(.el-input__wrapper):hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.search-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+}
+
 .search-button {
   flex-shrink: 0;
   min-width: 80px;
+  border-radius: 8px;
+  height: 36px;
+  font-weight: 500;
 }
 
 .search-results {
   max-height: 500px;
   overflow-y: auto;
   min-height: 300px;
+  padding-right: 4px;
+}
+
+.search-results::-webkit-scrollbar {
+  width: 6px;
+}
+
+.search-results::-webkit-scrollbar-thumb {
+  background-color: var(--el-border-color);
+  border-radius: 3px;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover {
+  background-color: var(--el-border-color-dark);
 }
 
 .no-results {
@@ -3338,18 +3456,21 @@ const deleteMessage = async () => {
   min-height: 300px;
   color: var(--el-text-color-secondary);
   text-align: center;
+  padding: 40px 20px;
 }
 
 .tips-icon {
-  font-size: 48px;
+  font-size: 64px;
   color: var(--el-color-primary-light-5);
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  opacity: 0.8;
 }
 
 .search-tips p {
   font-size: 16px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   color: var(--el-text-color-primary);
+  font-weight: 500;
 }
 
 .search-tips ul {
@@ -3358,6 +3479,9 @@ const deleteMessage = async () => {
   padding: 0;
   font-size: 14px;
   line-height: 2;
+  background-color: var(--el-fill-color-light);
+  padding: 16px 24px;
+  border-radius: 8px;
 }
 
 .search-tips li::before {
@@ -3374,26 +3498,35 @@ const deleteMessage = async () => {
 }
 
 .results-count {
-  padding: 8px 12px;
-  background-color: var(--el-fill-color-light);
-  border-radius: 4px;
+  padding: 10px 16px;
+  background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-fill-color-light) 100%);
+  border-radius: 8px;
   font-size: 13px;
-  color: var(--el-text-color-secondary);
+  color: var(--el-color-primary);
   text-align: center;
+  font-weight: 500;
+  border: 1px solid var(--el-color-primary-light-8);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .result-item {
-  padding: 12px;
-  border: 1px solid var(--el-border-color-light);
-  border-radius: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 10px;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
+  background-color: var(--el-bg-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
 .result-item:hover {
   background-color: var(--el-fill-color-light);
   border-color: var(--el-color-primary-light-7);
-  transform: translateX(4px);
+  transform: translateX(6px);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.15);
 }
 
 .result-header {
@@ -3425,16 +3558,48 @@ const deleteMessage = async () => {
   padding-left: 48px;
   font-size: 14px;
   color: var(--el-text-color-regular);
-  line-height: 1.5;
+  line-height: 1.6;
   word-break: break-word;
 }
 
 .result-content :deep(.highlight) {
-  background-color: #fff59d;
+  background: linear-gradient(135deg, #ffd54f 0%, #ffeb3b 100%);
   color: #000;
-  padding: 2px 4px;
-  border-radius: 2px;
+  padding: 2px 6px;
+  border-radius: 4px;
   font-weight: 600;
+  box-shadow: 0 1px 3px rgba(255, 193, 7, 0.3);
+}
+
+/* 暗黑模式搜索框适配 */
+:deep(.dark-mode) .search-dialog :deep(.el-dialog__header) {
+  background-color: var(--el-bg-color-overlay);
+  border-bottom-color: var(--el-border-color);
+}
+
+:deep(.dark-mode) .search-tips ul {
+  background-color: var(--el-fill-color);
+}
+
+:deep(.dark-mode) .results-count {
+  background: linear-gradient(135deg, rgba(64, 158, 255, 0.15) 0%, var(--el-fill-color) 100%);
+  border-color: var(--el-border-color);
+}
+
+:deep(.dark-mode) .result-item {
+  background-color: var(--el-bg-color-overlay);
+  border-color: var(--el-border-color);
+}
+
+:deep(.dark-mode) .result-item:hover {
+  background-color: var(--el-fill-color);
+  box-shadow: 0 4px 12px rgba(64, 158, 255, 0.25);
+}
+
+:deep(.dark-mode) .result-content :deep(.highlight) {
+  background: linear-gradient(135deg, #ffa726 0%, #ff9800 100%);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(255, 152, 0, 0.4);
 }
 
 /* 高亮消息动画 */
@@ -3451,38 +3616,183 @@ const deleteMessage = async () => {
   }
 }
 
+/* 搜索结果项进入动画 */
+.result-item {
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
 /* 搜索对话框移动端适配 */
 @media (max-width: 768px) {
   .search-dialog :deep(.el-dialog) {
-    width: 95vw !important;
-    margin: 0 auto !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    margin: 0 !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    border-radius: 0 !important;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .search-dialog :deep(.el-dialog__header) {
+    padding: 16px;
+    border-bottom: 1px solid var(--el-border-color-light);
+    margin: 0;
+  }
+  
+  .search-dialog :deep(.el-dialog__title) {
+    font-size: 18px;
+    font-weight: 600;
+  }
+  
+  .search-dialog :deep(.el-dialog__body) {
+    flex: 1;
+    padding: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .search-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
   }
   
   .search-input-wrapper {
     gap: 8px;
+    flex-direction: row;
+  }
+  
+  .search-input {
+    font-size: 14px;
+  }
+  
+  .search-input :deep(.el-input__wrapper) {
+    padding: 8px 12px;
+  }
+  
+  .search-input :deep(.el-input__inner) {
+    font-size: 14px;
   }
   
   .search-button {
     min-width: 70px;
-    padding: 0 16px;
+    padding: 8px 16px;
+    font-size: 14px;
+  }
+  
+  .search-dialog :deep(.el-divider) {
+    margin: 12px 0;
   }
   
   .search-results {
-    max-height: 400px;
-    min-height: 250px;
+    flex: 1;
+    max-height: none !important;
+    min-height: 0 !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
   }
   
   .search-tips {
-    min-height: 250px;
+    min-height: 200px;
+    padding: 20px;
+  }
+  
+  .tips-icon {
+    font-size: 56px;
+    margin-bottom: 20px;
+  }
+  
+  .search-tips p {
+    font-size: 15px;
+    margin-bottom: 20px;
+  }
+  
+  .search-tips ul {
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  
+  .no-results {
+    min-height: 200px;
+  }
+  
+  .results-count {
+    padding: 10px 12px;
+    font-size: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background-color: var(--el-fill-color);
+    border-radius: 6px;
+    margin-bottom: 8px;
+  }
+  
+  .results-list {
+    gap: 10px;
+    padding-bottom: 12px;
   }
   
   .result-item {
-    padding: 10px;
+    padding: 12px;
+    border-radius: 12px;
+    border: 1px solid var(--el-border-color-lighter);
+    background-color: var(--el-bg-color);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  }
+  
+  .result-item:active {
+    background-color: var(--el-fill-color-light);
+    transform: scale(0.98);
+  }
+  
+  .result-header {
+    margin-bottom: 10px;
+  }
+  
+  .result-info {
+    margin-left: 10px;
+    gap: 2px;
+  }
+  
+  .result-sender {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  
+  .result-time {
+    font-size: 11px;
   }
   
   .result-content {
     padding-left: 0;
     margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    padding-top: 8px;
+    border-top: 1px solid var(--el-border-color-lighter);
+  }
+  
+  .result-content :deep(.highlight) {
+    background-color: #ffd54f;
+    color: #000;
+    padding: 1px 3px;
+    border-radius: 3px;
+    font-weight: 600;
   }
 }
 </style>

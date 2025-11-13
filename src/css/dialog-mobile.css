@@ -222,3 +222,133 @@
     height: 40px !important;
   }
 }
+
+/* ForwardDialog 转发对话框优化 */
+@media (max-width: 768px) {
+  .forward-dialog.el-dialog {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+  
+  .forward-dialog .el-dialog__body {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    padding: 12px 16px !important;
+  }
+  
+  /* 已选择目标区域 */
+  .forward-dialog .selected-targets {
+    flex-shrink: 0;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  
+  /* 搜索框 */
+  .forward-dialog .search-box {
+    flex-shrink: 0;
+  }
+  
+  /* Tabs 容器 */
+  .forward-dialog .forward-tabs {
+    flex: 1 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+  
+  .forward-dialog .el-tabs__header {
+    flex-shrink: 0 !important;
+  }
+  
+  .forward-dialog .el-tabs__content {
+    flex: 1 !important;
+    overflow: hidden !important;
+    position: relative !important;
+  }
+  
+  .forward-dialog .el-tab-pane {
+    height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    /* 确保非激活标签页隐藏 */
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    transition: none !important;
+  }
+  
+  .forward-dialog .el-tab-pane[aria-hidden="false"] {
+    position: relative !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+  
+  /* 目标列表 */
+  .forward-dialog .target-list {
+    flex: 1 !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  /* 目标项触摸优化 */
+  .forward-dialog .target-item {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    cursor: pointer;
+  }
+  
+  /* 选中状态增强 */
+  .forward-dialog .target-item.selected {
+    background-color: rgba(64, 158, 255, 0.1) !important;
+    border-color: var(--el-color-primary) !important;
+  }
+  
+  /* 底部按钮 */
+  .forward-dialog .dialog-footer {
+    display: flex !important;
+    gap: 10px !important;
+  }
+  
+  .forward-dialog .dialog-footer .el-button {
+    flex: 1 !important;
+    margin: 0 !important;
+  }
+}
+
+/* 小屏幕转发对话框 */
+@media (max-width: 480px) {
+  .forward-dialog.el-dialog {
+    width: 100vw !important;
+    height: 100vh !important;
+    max-height: 100vh !important;
+    margin: 0 !important;
+    border-radius: 0 !important;
+  }
+  
+  .forward-dialog .selected-targets {
+    max-height: 90px;
+  }
+  
+  .forward-dialog .target-item {
+    padding: 10px 8px !important;
+  }
+}
+
+/* 横屏模式转发对话框 */
+@media (max-width: 768px) and (orientation: landscape) {
+  .forward-dialog .selected-targets {
+    max-height: 80px;
+  }
+  
+  .forward-dialog .target-list {
+    min-height: 120px;
+  }
+}
