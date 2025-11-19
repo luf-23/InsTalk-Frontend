@@ -66,9 +66,79 @@ export const messageStore = defineStore('message', () => {
     
     // 初始化消息数据（智能加载）
     const initMessages = async () => {
-        // 如果本地已有消息，直接使用本地数据
+        // 如果本地已有消息，直接使用本地数据，并尝试获取新消息
         if (messages.value.length > 0) {
             console.log(`使用本地缓存的 ${messages.value.length} 条消息`);
+            
+            // 获取本地最后一条消息
+            const lastMessage = getLastMessage();
+            
+            if (lastMessage) {
+                console.log('本地有聊天记录，正在获取服务器最近30天的新消息...');
+                try {
+                    // 调用接口获取新消息，传入最后一条消息
+                    const { getNewMessagesService } = await import('@/api/message');
+                    const newMessages = await getNewMessagesService({
+                        id: lastMessage.id,
+                        senderId: lastMessage.senderId,
+                        receiverId: lastMessage.receiverId,
+                        groupId: lastMessage.groupId,
+                        content: lastMessage.content,
+                        messageType: lastMessage.messageType,
+                        sentAt: lastMessage.sentAt,
+                        isRead: lastMessage.isRead
+                    });
+                    
+                    // 合并新消息到本地消息列表
+                    if (newMessages && Array.isArray(newMessages) && newMessages.length > 0) {
+                        console.log(`从服务器获取到 ${newMessages.length} 条新消息`);
+                        
+                        // 过滤掉本地已存在的消息
+                        const existingIds = new Set(messages.value.map(m => m.id));
+                        const uniqueNewMessages = newMessages.filter(msg => !existingIds.has(msg.id));
+                        
+                        if (uniqueNewMessages.length > 0) {
+                            messages.value.push(...uniqueNewMessages);
+                            console.log(`成功添加 ${uniqueNewMessages.length} 条新消息到本地`);
+                            
+                            // 更新会话列表
+                            const convStore = conversationStore();
+                            const currentUserId = getCurrentUserId();
+                            
+                            uniqueNewMessages.forEach(messageVO => {
+                                let conversationId, conversationType;
+                                
+                                if (messageVO.groupId) {
+                                    // 群组消息
+                                    conversationId = messageVO.groupId;
+                                    conversationType = 'group';
+                                } else {
+                                    // 好友消息：找到对方的 ID
+                                    conversationId = messageVO.senderId === currentUserId 
+                                        ? messageVO.receiverId 
+                                        : messageVO.senderId;
+                                    conversationType = 'friend';
+                                }
+                                
+                                // 创建或更新会话（新收到的消息）
+                                convStore.createOrUpdateConversation({
+                                    id: conversationId,
+                                    type: conversationType,
+                                    lastMessage: messageVO,
+                                    isNewMessage: true
+                                });
+                            });
+                        } else {
+                            console.log('没有新消息需要添加（服务器返回的消息已存在）');
+                        }
+                    } else {
+                        console.log('服务器没有返回新消息');
+                    }
+                } catch (error) {
+                    console.error('获取新消息失败:', error);
+                    // 获取新消息失败不影响使用本地缓存
+                }
+            }
         } else {
             // 本地无数据，从服务器获取
             console.log('本地无消息，从服务器获取历史消息');
