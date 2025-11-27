@@ -3,8 +3,8 @@ import { ElMessage } from 'element-plus';
 import { useAuthStore } from '@/store/auth.js';
 import { useUserInfoStore } from '@/store/userInfo.js';
 
-//const baseURL = "http://localhost:8080/";
-const baseURL = "http://43.142.2.253/api/";
+const baseURL = "http://localhost:8080/";
+//const baseURL = "http://43.142.2.253/api/";
 //const baseURL = "http://192.168.159.105:8080/";
 const request = axios.create({
   baseURL,
@@ -87,29 +87,41 @@ request.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
       
+      // 直接使用 axios 发送刷新请求，避免走响应拦截器
       try {
-        // 动态导入 refreshTokenService 避免循环依赖
-        const { refreshTokenService } = await import('@/api/auth.js');
+        console.log('Attempting to refresh token...');
         
-        // 使用refreshToken刷新accessToken
-        const tokenData = await refreshTokenService({
+        const refreshResponse = await axios.post(`${baseURL}auth/refresh`, {
           refreshToken: authStore.refreshToken
+        }, {
+          headers: {
+            'Content-Type': 'application/json'
+          }
         });
         
-        // refreshTokenService 已经通过响应拦截器处理，直接返回 data.data
-        const { accessToken: newAccessToken, refreshToken: newRefreshToken } = tokenData;
+        console.log('Refresh response:', refreshResponse.data);
         
-        // 更新tokens
-        authStore.setTokens(newAccessToken, newRefreshToken);
-        
-        // 处理队列中的请求
-        processQueue(null, newAccessToken);
-        
-        // 重新发送原始请求，确保使用新的token
-        originalRequest.headers.Authorization = `${newAccessToken}`;
-        return request(originalRequest);
+        // 检查业务状态码
+        if (refreshResponse.data.code === 0) {
+          const { accessToken: newAccessToken, refreshToken: newRefreshToken } = refreshResponse.data.data;
+          
+          // 更新tokens
+          authStore.setTokens(newAccessToken, newRefreshToken);
+          
+          // 处理队列中的请求
+          processQueue(null, newAccessToken);
+          
+          // 重新发送原始请求，确保使用新的token
+          originalRequest.headers.Authorization = `${newAccessToken}`;
+          return request(originalRequest);
+        } else {
+          // 业务失败，抛出错误进入 catch
+          throw new Error(refreshResponse.data.message || 'Token刷新失败');
+        }
         
       } catch (refreshError) {
+        console.log('Token refresh failed, clearing auth and redirecting to login');
+        
         // 刷新失败，清除所有认证信息和用户信息
         const userInfoStore = useUserInfoStore();
         processQueue(refreshError, null);
@@ -118,9 +130,19 @@ request.interceptors.response.use(
         
         ElMessage.error('登录已过期，请重新登录');
         
-        // 跳转到登录页
-        // 这里需要根据你的路由配置调整
-        // router.push('/login');
+        // 跳转到登录页 - 使用动态导入避免循环依赖，并确保跳转成功
+        import('@/router/index.js').then(({ default: router }) => {
+          console.log('Router loaded, pushing to /login');
+          router.push('/login').catch(err => {
+            console.error('Router push failed:', err);
+            // 如果路由跳转失败，使用原生方法强制跳转
+            window.location.href = '/login';
+          });
+        }).catch(err => {
+          console.error('Failed to load router:', err);
+          // 如果动态导入失败，直接使用原生方法跳转
+          window.location.href = '/login';
+        });
         
         return Promise.reject(refreshError);
       } finally {
