@@ -10,8 +10,8 @@ class WebSocketService {
         this.maxReconnectAttempts = 5;
         this.reconnectDelay = 3000;
         this.heartbeatInterval = 15000; // 15秒心跳
-        this.messageHandlers = new Map();
-        this.isManualClose = false;
+        this.messageHandlers = new Map();// <type,handler[]>观察者
+        this.isManualClose = false;//手动关闭
         this.isConnected = false;
     }
 
@@ -51,6 +51,7 @@ class WebSocketService {
             };
 
             this.ws.onmessage = (event) => {
+                //event即为后端传过来的payload,格式为JSON字符串，如{"type":"NEW_MESSAGE","data":{...}}
                 try {
                     // 如果收到的是 PONG 心跳响应，直接返回
                     if (event.data === 'PONG') {
@@ -161,7 +162,7 @@ class WebSocketService {
         
         this.heartbeatTimer = setInterval(() => {
             if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send('PING');
+                this.ws.send('PING');//这个send发送的内容为TextMessage.payload
             }
         }, this.heartbeatInterval);
     }
@@ -182,6 +183,7 @@ class WebSocketService {
      * @param {Function} handler - 处理函数
      */
     on(type, handler) {
+        // 添加观察者
         if (!this.messageHandlers.has(type)) {
             this.messageHandlers.set(type, []);
         }
@@ -194,6 +196,7 @@ class WebSocketService {
      * @param {Function} handler - 处理函数
      */
     off(type, handler) {
+        // 移除观察者
         if (this.messageHandlers.has(type)) {
             const handlers = this.messageHandlers.get(type);
             const index = handlers.indexOf(handler);
@@ -204,7 +207,7 @@ class WebSocketService {
     }
 
     /**
-     * 触发处理器
+     * 触发处理器(调用Handler里的函数)
      * @param {String} type - 消息类型
      * @param {*} data - 数据
      */
