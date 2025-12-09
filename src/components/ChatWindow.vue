@@ -2437,6 +2437,8 @@ const deleteMessage = async () => {
   line-height: 1.6;
   font-size: 14px;
   letter-spacing: 0.3px;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* Markdown 格式样式 */
@@ -3021,8 +3023,6 @@ const deleteMessage = async () => {
 
 /* 消息长按效果 */
 .message-container {
-  -webkit-user-select: none;
-  user-select: none;
   -webkit-touch-callout: none;
 }
 
