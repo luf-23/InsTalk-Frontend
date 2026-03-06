@@ -1903,7 +1903,7 @@ const deleteMessage = async () => {
             </el-avatar>
             <div class="message-content">
               <div class="message-row">
-                <div class="message-bubble ai-message-bubble">
+                <div class="message-bubble ai-message-bubble ai-streaming-active">
                   <div class="text-message" v-html="formatAiMessageContent(aiStreamingMessage)"></div>
                   <div class="ai-streaming-cursor"></div>
                 </div>
@@ -2420,6 +2420,12 @@ const deleteMessage = async () => {
 /* AI消息气泡宽度与普通消息一致 */
 .ai-message-bubble {
   max-width: 85%;
+}
+
+/* 流式输出时撑开气泡宽度，防止气泡先向右扩展再折行的视觉抖动 */
+.ai-message-bubble.ai-streaming-active {
+  min-width: min(72%, 520px);
+  display: block;
 }
 
 /* 自己的消息气泡 - QQ蓝色 */
