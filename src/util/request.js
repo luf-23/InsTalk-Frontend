@@ -3,9 +3,7 @@ import { ElMessage } from 'element-plus';
 import { useAuthStore } from '@/store/auth.js';
 import { useUserInfoStore } from '@/store/userInfo.js';
 
-const baseURL = "http://localhost:10010/";
-//const baseURL = "http://43.142.2.253/api/";
-//const baseURL = "http://192.168.159.105:8080/";
+const baseURL = '/api/';
 const request = axios.create({
   baseURL,
   timeout: 6000,

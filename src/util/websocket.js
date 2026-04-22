@@ -1,5 +1,4 @@
 import { ElMessage } from 'element-plus';
-import { getBaseURL } from './request';
 
 class WebSocketService {
     constructor() {
@@ -29,10 +28,8 @@ class WebSocketService {
         
         try {
             // 构建 WebSocket URL
-            const baseURL = getBaseURL();
-            const wsProtocol = baseURL.startsWith('https://') ? 'wss://' : 'ws://';
-            const wsHost = baseURL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-            const wsURL = `${wsProtocol}${wsHost}/ws?token=${encodeURIComponent(token)}`;
+            const wsProtocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const wsURL = `${wsProtocol}://${window.location.host}/ws?token=${encodeURIComponent(token)}`;
             
             console.log('正在连接 WebSocket:', wsURL);
             
