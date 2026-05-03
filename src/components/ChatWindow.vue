@@ -79,6 +79,13 @@ const aiStreaming = ref(false);
 const aiStreamingMessage = ref('');
 const aiCredential = ref('');
 let aiStreamController = null; // 用于控制 AI 流式传输的对象
+const aiContextConfig = {
+  windowSize: 12,
+  summaryTriggerSize: 24,
+  ragTopK: 6,
+  includeSummary: true,
+  includeRag: true
+};
 const isOwnerOfRobot = computed(() => {
   // 检查当前用户是否是 Robot 的主人
   // 通过检查好友信息中的 requester_id 或其他标识
@@ -916,7 +923,8 @@ const sendAiMessage = async (content) => {
         taskId: aiCredential.value,
         robotId: currentChat.value.id,
         currentUserMessageId: currentUserMessageId, // 传递用户消息 ID
-        messageIds: messageIds
+        messageIds: messageIds,
+        ...aiContextConfig
       },
       // onMessage 回调 - 接收流式数据片段
       (chunk) => {

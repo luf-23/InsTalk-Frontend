@@ -63,6 +63,11 @@ export const getAiConfigService = (params) => {
  * @param {number} data.robotId - Robot用户ID
  * @param {number} data.currentUserMessageId - 当前用户消息的ID，后端可通过WebSocket推送给AI用户
  * @param {number[]} data.messageIds - 历史消息ID列表，用于构建对话上下文
+ * @param {number} [data.windowSize] - 滑动窗口大小
+ * @param {number} [data.summaryTriggerSize] - 触发摘要的历史长度
+ * @param {number} [data.ragTopK] - RAG召回条数
+ * @param {boolean} [data.includeSummary] - 是否加入摘要
+ * @param {boolean} [data.includeRag] - 是否加入RAG
  * @param {Function} onMessage - 接收到消息片段时的回调函数，参数为消息内容字符串
  * @param {Function} onComplete - 对话完成时的回调函数
  * @param {Function} onError - 发生错误时的回调函数，参数为错误对象
