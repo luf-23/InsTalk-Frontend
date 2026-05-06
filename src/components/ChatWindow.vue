@@ -21,6 +21,7 @@ import ContextMenu from './ContextMenu.vue';
 import RobotConfigDialog from './RobotConfigDialog.vue';
 import ForwardDialog from './ForwardDialog.vue';
 import { getAiCredentialService, aiChatStreamService } from '@/api/ai';
+import { renderAiMarkdown } from '@/util/aiMarkdown';
 
 // Props
 const props = defineProps({
@@ -938,15 +939,18 @@ const sendAiMessage = async (content) => {
         nextTick(scrollToBottom);
       },
       // onComplete 回调 - 流式传输完成
-      () => {
-        // AI 回复的完整消息已经由后端保存，会通过 WebSocket 推送过来
-        aiStreaming.value = false;
-        aiStreamingMessage.value = '';
-        aiStreamController = null;
-        
-        aiCredential.value = ''; // 清空凭证，下次重新获取
-        
-        nextTick(scrollToBottom);
+      async () => {
+        // 先合并服务端助手消息，再结束流式状态；若先关流式再拉取，会出现中间一帧「气泡没了、列表还没这条」的闪烁
+        try {
+          await msgStore.pullMessagesAfterAiReply(userMessageVO);
+        } finally {
+          aiStreaming.value = false;
+          aiStreamingMessage.value = '';
+          aiStreamController = null;
+          aiCredential.value = '';
+        }
+        await nextTick();
+        scrollToBottom();
       },
       // onError 回调 - 发生错误
       (error) => {
@@ -1326,44 +1330,6 @@ const formatUserMessageContent = (content) => {
   return content.replace(/\\n/g, '\n');
 };
 
-// 处理AI消息内容中的换行符和基本Markdown格式
-const formatAiMessageContent = (content) => {
-  if (!content) return '';
-  // 将 \n 字符串转换为真正的换行符
-  let formatted = content.replace(/\\n/g, '\n');
-  
-  // 处理基本的Markdown格式
-  // 代码块 ```code``` (先处理，避免被其他规则影响)
-  formatted = formatted.replace(/```([\s\S]+?)```/g, '<pre><code>$1</code></pre>');
-  
-  // 行内代码 `code`
-  formatted = formatted.replace(/`([^`]+?)`/g, '<code>$1</code>');
-  
-  // 标题 (需要在行首，支持前后可能有空格)
-  formatted = formatted.replace(/^\s*###\s+(.+)$/gm, '<h3>$1</h3>');
-  formatted = formatted.replace(/^\s*##\s+(.+)$/gm, '<h2>$1</h2>');
-  formatted = formatted.replace(/^\s*#\s+(.+)$/gm, '<h1>$1</h1>');
-  
-  // 引用 > text (支持前面可能有空格)
-  formatted = formatted.replace(/^\s*>\s+(.+)$/gm, '<blockquote>$1</blockquote>');
-  
-  // 加粗 **text** 或 __text__
-  formatted = formatted.replace(/\*\*([^\*]+?)\*\*/g, '<strong>$1</strong>');
-  formatted = formatted.replace(/__([^_]+?)__/g, '<strong>$1</strong>');
-  
-  // 斜体 *text* 或 _text_ (避免匹配加粗)
-  formatted = formatted.replace(/(?<!\*)\*([^\*]+?)\*(?!\*)/g, '<em>$1</em>');
-  formatted = formatted.replace(/(?<!_)_([^_]+?)_(?!_)/g, '<em>$1</em>');
-  
-  // 删除线 ~~text~~
-  formatted = formatted.replace(/~~([^~]+?)~~/g, '<del>$1</del>');
-  
-  // 将换行符转换为 <br> 标签（除了已经在块级元素中的）
-  formatted = formatted.replace(/\n/g, '<br>');
-  
-  return formatted;
-};
-
 // 判断消息是否来自AI机器人
 const isAiMessage = (message) => {
   if (!currentChat.value || chatType.value !== 'friend') return false;
@@ -1375,10 +1341,9 @@ const isAiMessage = (message) => {
 // 根据消息类型格式化内容
 const formatMessageContent = (message) => {
   if (isAiMessage(message)) {
-    return formatAiMessageContent(message.content);
-  } else {
-    return formatUserMessageContent(message.content);
+    return renderAiMarkdown(message.content);
   }
+  return formatUserMessageContent(message.content);
 };
 
 // 打开图片查看器
@@ -1772,7 +1737,7 @@ const deleteMessage = async () => {
                         <!-- 根据消息类型显示内容 -->
                         <template v-if="message.messageType === 'TEXT'">
                           <!-- AI消息使用v-html渲染Markdown，用户消息使用纯文本 -->
-                          <div v-if="isAiMessage(message)" class="text-message" v-html="formatMessageContent(message)"></div>
+                          <div v-if="isAiMessage(message)" class="text-message ai-markdown" v-html="formatMessageContent(message)"></div>
                           <div v-else class="text-message">{{ formatMessageContent(message) }}</div>
                         </template>
                         <template v-else-if="message.messageType === 'IMAGE'">
@@ -1842,7 +1807,7 @@ const deleteMessage = async () => {
                         <!-- 根据消息类型显示内容 -->
                         <template v-if="message.messageType === 'TEXT'">
                           <!-- AI消息使用v-html渲染Markdown，用户消息使用纯文本 -->
-                          <div v-if="isAiMessage(message)" class="text-message" v-html="formatMessageContent(message)"></div>
+                          <div v-if="isAiMessage(message)" class="text-message ai-markdown" v-html="formatMessageContent(message)"></div>
                           <div v-else class="text-message">{{ formatMessageContent(message) }}</div>
                         </template>
                         <template v-else-if="message.messageType === 'IMAGE'">
@@ -1912,7 +1877,7 @@ const deleteMessage = async () => {
             <div class="message-content">
               <div class="message-row">
                 <div class="message-bubble ai-message-bubble ai-streaming-active">
-                  <div class="text-message" v-html="formatAiMessageContent(aiStreamingMessage)"></div>
+                  <div class="text-message ai-markdown" v-html="renderAiMarkdown(aiStreamingMessage, { streaming: true })"></div>
                   <div class="ai-streaming-cursor"></div>
                 </div>
               </div>
@@ -2428,6 +2393,7 @@ const deleteMessage = async () => {
 /* AI消息气泡宽度与普通消息一致 */
 .ai-message-bubble {
   max-width: 85%;
+  overflow-x: auto;
 }
 
 /* 流式输出时撑开气泡宽度，防止气泡先向右扩展再折行的视觉抖动 */
@@ -2455,128 +2421,185 @@ const deleteMessage = async () => {
   -webkit-user-select: text;
 }
 
-/* Markdown 格式样式 */
-.text-message h1,
-.text-message h2,
-.text-message h3 {
-  margin: 8px 0;
-  font-weight: 600;
-  line-height: 1.4;
-}
-
-.text-message h1 {
-  font-size: 20px;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.1);
-  padding-bottom: 6px;
-}
-
-.text-message h2 {
-  font-size: 18px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
-  padding-bottom: 4px;
-}
-
-.text-message h3 {
-  font-size: 16px;
-}
-
-.own-message .text-message h1 {
-  border-bottom-color: rgba(0, 0, 0, 0.15);
-}
-
-.own-message .text-message h2 {
-  border-bottom-color: rgba(0, 0, 0, 0.15);
-}
-
-.text-message h1,
-.text-message h2,
-.text-message h3 {
-  margin: 12px 0 8px 0;
-  color: inherit;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-.text-message h1 {
-  font-size: 18px;
-  border-bottom: 2px solid rgba(0, 0, 0, 0.1);
-  padding-bottom: 6px;
-}
-
-.text-message h2 {
-  font-size: 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
-  padding-bottom: 4px;
-}
-
-.text-message h3 {
+/* AI Markdown（DeepSeek 风格排版：表格、列表、代码块、引用） */
+.text-message.ai-markdown {
+  white-space: normal;
   font-size: 15px;
+  line-height: 1.75;
+  letter-spacing: 0.02em;
+  color: #1d1d1f;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
-.own-message .text-message h1 {
-  border-bottom-color: rgba(0, 0, 0, 0.15);
+.ai-message-bubble .text-message.ai-markdown {
+  max-width: 100%;
 }
 
-.own-message .text-message h2 {
-  border-bottom-color: rgba(0, 0, 0, 0.12);
+.ai-markdown :deep(p) {
+  margin: 0.55em 0;
 }
 
-.text-message blockquote {
-  margin: 8px 0;
-  padding: 8px 12px;
-  border-left: 4px solid rgba(0, 0, 0, 0.2);
-  background-color: rgba(0, 0, 0, 0.03);
-  border-radius: 0 4px 4px 0;
+.ai-markdown :deep(p:first-child) {
+  margin-top: 0;
 }
 
-.own-message .text-message blockquote {
-  border-left-color: rgba(0, 0, 0, 0.25);
-  background-color: rgba(0, 0, 0, 0.08);
+.ai-markdown :deep(p:last-child) {
+  margin-bottom: 0;
 }
 
-.text-message strong {
+.ai-markdown :deep(h1),
+.ai-markdown :deep(h2),
+.ai-markdown :deep(h3),
+.ai-markdown :deep(h4),
+.ai-markdown :deep(h5),
+.ai-markdown :deep(h6) {
+  margin: 1.05em 0 0.4em;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #111827;
+}
+
+.ai-markdown :deep(h1) {
+  font-size: 1.35rem;
+  padding-bottom: 0.35em;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.ai-markdown :deep(h2) {
+  font-size: 1.2rem;
+  padding-bottom: 0.28em;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+}
+
+.ai-markdown :deep(h3) {
+  font-size: 1.08rem;
+}
+
+.ai-markdown :deep(a) {
+  color: #2563eb;
+  text-decoration: none;
+}
+
+.ai-markdown :deep(a:hover) {
+  text-decoration: underline;
+}
+
+.ai-markdown :deep(ul),
+.ai-markdown :deep(ol) {
+  margin: 0.5em 0;
+  padding-left: 1.35em;
+}
+
+.ai-markdown :deep(li) {
+  margin: 0.28em 0;
+}
+
+.ai-markdown :deep(ul.contains-task-list) {
+  list-style: none;
+  padding-left: 0.2em;
+}
+
+.ai-markdown :deep(.task-list-item) {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4em;
+}
+
+.ai-markdown :deep(.task-list-item input[type='checkbox']) {
+  margin-top: 0.38em;
+  flex-shrink: 0;
+}
+
+.ai-markdown :deep(blockquote) {
+  margin: 0.65em 0;
+  padding: 0.55em 0.9em;
+  border-left: 3px solid #cbd5e1;
+  background: rgba(241, 245, 249, 0.9);
+  border-radius: 0 8px 8px 0;
+  color: #475569;
+}
+
+.ai-markdown :deep(hr) {
+  margin: 1em 0;
+  border: none;
+  border-top: 1px solid rgba(15, 23, 42, 0.1);
+}
+
+.ai-markdown :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.92em;
+}
+
+.ai-markdown :deep(th),
+.ai-markdown :deep(td) {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  padding: 0.45em 0.65em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.ai-markdown :deep(th) {
+  background: rgba(248, 250, 252, 0.98);
+  font-weight: 600;
+}
+
+.ai-markdown :deep(tr:nth-child(even) td) {
+  background: rgba(249, 250, 251, 0.65);
+}
+
+.ai-markdown :deep(code:not(pre code)) {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Monaco, monospace;
+  font-size: 0.88em;
+  padding: 0.12em 0.38em;
+  border-radius: 4px;
+  background: rgba(15, 23, 42, 0.06);
+  color: #b45309;
+}
+
+.ai-markdown :deep(pre.ai-md-pre),
+.ai-markdown :deep(pre.hljs) {
+  margin: 0.75em 0;
+  padding: 12px 14px;
+  border-radius: 10px;
+  overflow-x: auto;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  background: #f6f8fa !important;
+  line-height: 1.55;
+}
+
+.ai-markdown :deep(pre code),
+.ai-markdown :deep(pre code.hljs) {
+  font-family: ui-monospace, 'Cascadia Code', 'SF Mono', Consolas, Monaco, monospace;
+  font-size: 13px;
+  background: transparent !important;
+  padding: 0;
+  border-radius: 0;
+  color: inherit;
+}
+
+.ai-markdown :deep(img) {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.35em 0;
+}
+
+.ai-markdown :deep(strong) {
   font-weight: 700;
   color: inherit;
 }
 
-.text-message em {
+.ai-markdown :deep(em) {
   font-style: italic;
 }
 
-.text-message del {
+.ai-markdown :deep(del),
+.ai-markdown :deep(s) {
   text-decoration: line-through;
-  opacity: 0.7;
-}
-
-.text-message code {
-  background-color: rgba(0, 0, 0, 0.06);
-  padding: 2px 6px;
-  border-radius: 3px;
-  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-  font-size: 13px;
-}
-
-.own-message .text-message code {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.text-message pre {
-  background-color: rgba(0, 0, 0, 0.06);
-  padding: 10px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 6px 0;
-}
-
-.own-message .text-message pre {
-  background-color: rgba(0, 0, 0, 0.1);
-}
-
-.text-message pre code {
-  background-color: transparent;
-  padding: 0;
-  font-size: 13px;
-  line-height: 1.5;
+  opacity: 0.85;
 }
 
 /* 图片消息 */

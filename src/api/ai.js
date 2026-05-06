@@ -88,6 +88,21 @@ export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
     
     let isCompleted = false; // 添加标志位，防止重复调用 onComplete
     let reader = null; // 保存 reader 引用
+    let sseLineBuffer = ''; // TCP 分包时半行需拼接，否则 data: [DONE] 可能被截断导致永远不结束
+
+    const flushSseLine = (rawLine) => {
+        const line = rawLine.replace(/\r$/, '');
+        if (!line.startsWith('data:')) return;
+        const payload = line.slice(5).trimStart().trim();
+        if (payload === '[DONE]') {
+            if (!isCompleted && onComplete) {
+                isCompleted = true;
+                onComplete();
+            }
+        } else if (payload && onMessage) {
+            onMessage(payload);
+        }
+    };
     
     // 使用fetch发起POST请求
     fetch(url, {
@@ -110,7 +125,11 @@ export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
         const readStream = () => {
             reader.read().then(({ done, value }) => {
                 if (done) {
-                    // 流结束时，只在未完成的情况下调用 onComplete
+                    if (sseLineBuffer.length > 0) {
+                        flushSseLine(sseLineBuffer);
+                        sseLineBuffer = '';
+                    }
+                    // 流结束时，只在未完成的情况下调用 onComplete（兜底：未收到 [DONE] 也应结束 loading）
                     if (!isCompleted && onComplete) {
                         isCompleted = true;
                         onComplete();
@@ -118,25 +137,10 @@ export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
                     return;
                 }
                 
-                // 解码数据
-                const chunk = decoder.decode(value, { stream: true });
-                const lines = chunk.split('\n');
-                
-                lines.forEach(line => {
-                    if (line.startsWith('data:')) {
-                        const data = line.substring(5).trim();
-                        
-                        // 检查是否为完成信号
-                        if (data === '[DONE]') {
-                            if (!isCompleted && onComplete) {
-                                isCompleted = true;
-                                onComplete();
-                            }
-                        } else if (data && onMessage) {
-                            onMessage(data);
-                        }
-                    }
-                });
+                sseLineBuffer += decoder.decode(value, { stream: true });
+                const lines = sseLineBuffer.split('\n');
+                sseLineBuffer = lines.pop() ?? '';
+                lines.forEach(flushSseLine);
                 
                 // 继续读取
                 readStream();

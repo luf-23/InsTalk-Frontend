@@ -598,6 +598,62 @@ export const messageStore = defineStore('message', () => {
         }
     };
 
+    /**
+     * AI 流式结束后拉取服务器上新消息（WebSocket 可能因网关/多实例未推到当前页）
+     * @param {Object} anchorMessage - 本轮用户消息的 MessageVO，作为 /newMessageList 游标
+     */
+    const pullMessagesAfterAiReply = async (anchorMessage) => {
+        if (!anchorMessage || anchorMessage.id == null) return;
+
+        const { getNewMessagesService } = await import('@/api/message');
+        const maxAttempts = 12;
+        const delayMs = 200;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            if (attempt > 0) {
+                await new Promise((r) => setTimeout(r, delayMs));
+            }
+            try {
+                const newMessages = await getNewMessagesService(anchorMessage);
+                if (!newMessages || !Array.isArray(newMessages) || newMessages.length === 0) {
+                    continue;
+                }
+                const existingIds = new Set(messages.value.map((m) => m.id));
+                const uniqueNew = newMessages.filter((msg) => !existingIds.has(msg.id));
+                if (uniqueNew.length === 0) {
+                    continue;
+                }
+                messages.value.push(...uniqueNew);
+
+                const convStore = conversationStore();
+                const currentUserId = getCurrentUserId();
+                uniqueNew.forEach((messageVO) => {
+                    let conversationId;
+                    let conversationType;
+                    if (messageVO.groupId) {
+                        conversationId = messageVO.groupId;
+                        conversationType = 'group';
+                    } else {
+                        conversationId =
+                            messageVO.senderId === currentUserId
+                                ? messageVO.receiverId
+                                : messageVO.senderId;
+                        conversationType = 'friend';
+                    }
+                    convStore.createOrUpdateConversation({
+                        id: conversationId,
+                        type: conversationType,
+                        lastMessage: messageVO,
+                        isNewMessage: true,
+                    });
+                });
+                return;
+            } catch (error) {
+                console.error('AI 回复后同步消息失败:', error);
+            }
+        }
+    };
+
     // 转发消息
     const forwardMessage = async (originalMessage, targetId, targetType) => {
         loading.value.send = true;
@@ -663,7 +719,8 @@ export const messageStore = defineStore('message', () => {
         disconnectWebSocket,
         deleteMessage,
         recallMessage,
-        forwardMessage
+        forwardMessage,
+        pullMessagesAfterAiReply
     };
 }, {
     persist: {
