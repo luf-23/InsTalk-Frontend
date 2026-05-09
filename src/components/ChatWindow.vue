@@ -889,8 +889,9 @@ const sendAiMessage = async (content) => {
       aiCredential.value = credential;
     }
     
-    // 获取最近的历史消息 ID（最多20条）
-    const recentMessages = messages.value.slice(-20);
+    // 与后端 AiService 中 historyLimit = max(windowSize, summaryTriggerSize) 对齐，避免只传 20 条导致摘要触发条件永远达不到
+    const historyCap = Math.max(aiContextConfig.windowSize, aiContextConfig.summaryTriggerSize);
+    const recentMessages = messages.value.slice(-historyCap);
     const messageIds = recentMessages
       .filter(msg => msg.messageType === 'TEXT') // 只包含文本消息
       .map(msg => msg.id);

@@ -23,26 +23,25 @@ export const updateAiConfigService = (data) => {
 };
 
 
-
-
 /*
-@Data
-public class UserAiConfigVO {
-    private String systemPrompt;
-    private String model;
-    private Float temperature;
-    private Integer maxTokens;//不可修改
-    private Float topP;
-    private Float presencePenalty;
-    private Integer seed;
-    private Integer dailyMessageLimit;
-    private Integer dailyMessageCount;
-    private LocalDate lastResetDate;
-    private Integer totalMessages;
-    private Long totalTokensUsed;
-    private LocalDateTime lastUsedAt;
-}
-*/
+ * GET /ai/config 成功时返回 data 对应后端 UserAiConfigVO（JSON 字段名为 camelCase，与下列一致）：
+ *
+ * public class UserAiConfigVO {
+ *     private String systemPrompt;
+ *     private String model;
+ *     private Float temperature;
+ *     private Integer maxTokens; // 不可修改
+ *     private Float topP;
+ *     private Float presencePenalty;
+ *     private Integer seed;
+ *     private Integer dailyMessageLimit;
+ *     private Integer dailyMessageCount;
+ *     private LocalDate lastResetDate;
+ *     private Integer totalMessages;
+ *     private Long totalTokensUsed;
+ *     private LocalDateTime lastUsedAt;
+ * }
+ */
 //获取AI配置(params传robotId:robotId)
 export const getAiConfigService = (params) => {
     return request({
@@ -72,14 +71,10 @@ export const getAiConfigService = (params) => {
  * @param {Function} onComplete - 对话完成时的回调函数
  * @param {Function} onError - 发生错误时的回调函数，参数为错误对象
  * @returns {Object} 包含close方法的对象，可用于中断连接
- * 
- * AiChatDTO后端定义:
- * public class AiChatDTO {
- *     private String taskId;
- *     private Long robotId;
- *     private Long currentUserMessageId;  // 后端可通过WebSocket推送给AI用户，由mgStore的sendMessage接口获取
- *     private List<Long> messageIds;
- * }
+ *
+ * 与后端 AiChatDTO 对齐：taskId, robotId, currentUserMessageId, messageIds（可选）；
+ * windowSize, summaryTriggerSize, ragTopK, includeSummary, includeRag（可选，省略时后台用默认值）。
+ * messageIds 建议至少包含 max(windowSize, summaryTriggerSize) 条文本消息，与 ChatWindow 中 aiContextConfig 一致。
  */
 export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
     const baseURL = getBaseURL();
