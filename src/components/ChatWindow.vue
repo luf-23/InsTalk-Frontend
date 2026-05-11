@@ -83,9 +83,7 @@ let aiStreamController = null; // 用于控制 AI 流式传输的对象
 const aiContextConfig = {
   windowSize: 12,
   summaryTriggerSize: 24,
-  ragTopK: 6,
-  includeSummary: true,
-  includeRag: true
+  includeSummary: true
 };
 const isOwnerOfRobot = computed(() => {
   // 检查当前用户是否是 Robot 的主人

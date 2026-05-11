@@ -64,16 +64,16 @@ export const getAiConfigService = (params) => {
  * @param {number[]} data.messageIds - 历史消息ID列表，用于构建对话上下文
  * @param {number} [data.windowSize] - 滑动窗口大小
  * @param {number} [data.summaryTriggerSize] - 触发摘要的历史长度
- * @param {number} [data.ragTopK] - RAG召回条数
+ * @param {number} [data.ragTopK] - 已废弃（服务端用 search_memories 工具按需检索）
  * @param {boolean} [data.includeSummary] - 是否加入摘要
- * @param {boolean} [data.includeRag] - 是否加入RAG
+ * @param {boolean} [data.includeRag] - 已废弃
  * @param {Function} onMessage - 接收到消息片段时的回调函数，参数为消息内容字符串
  * @param {Function} onComplete - 对话完成时的回调函数
  * @param {Function} onError - 发生错误时的回调函数，参数为错误对象
  * @returns {Object} 包含close方法的对象，可用于中断连接
  *
  * 与后端 AiChatDTO 对齐：taskId, robotId, currentUserMessageId, messageIds（可选）；
- * windowSize, summaryTriggerSize, ragTopK, includeSummary, includeRag（可选，省略时后台用默认值）。
+ * windowSize, summaryTriggerSize, includeSummary（可选）；ragTopK/includeRag 已废弃可省略。
  * messageIds 建议至少包含 max(windowSize, summaryTriggerSize) 条文本消息，与 ChatWindow 中 aiContextConfig 一致。
  */
 export const aiChatStreamService = (data, onMessage, onComplete, onError) => {
