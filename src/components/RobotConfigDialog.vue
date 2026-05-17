@@ -24,9 +24,24 @@ const emit = defineEmits(['update:modelValue', 'close']);
 
 const userInfoStore = useUserInfoStore();
 const loading = ref(false);
+
+// 可用的 AI 模型列表（与 instalk-ai-service UserAiChatRequestFactory.ALLOWED_MODELS 保持一致）
+const modelOptions = [
+  { label: 'DeepSeek V3', value: 'deepseek-v3' },
+  { label: 'DeepSeek R1', value: 'deepseek-r1' },
+  { label: 'QWQ Plus', value: 'qwq-plus' },
+  { label: 'Qwen Max 2025', value: 'qwen-max-2025-01-25' }
+];
+
+const DEFAULT_CHAT_MODEL = 'deepseek-v3';
+const allowedChatModelValues = modelOptions.map((o) => o.value);
+
+const normalizeChatModel = (model) =>
+  model != null && allowedChatModelValues.includes(model) ? model : DEFAULT_CHAT_MODEL;
+
 const configForm = ref({
   systemPrompt: '',
-  model: 'deepseek-v3',
+  model: DEFAULT_CHAT_MODEL,
   temperature: 0.7,
   maxTokens: 2000,
   topP: 1.0,
@@ -39,14 +54,6 @@ const configForm = ref({
   totalTokensUsed: 0,
   lastUsedAt: null
 });
-
-// 可用的 AI 模型列表
-const modelOptions = [
-  { label: 'DeepSeek V3', value: 'deepseek-v3' },
-  { label: 'DeepSeek R1', value: 'deepseek-r1' },
-  { label: 'QWQ Plus', value: 'qwq-plus' },
-  { label: 'Qwen Max 2025', value: 'qwen-max-2025-01-25' }
-];
 
 // 对话框可见性
 const dialogVisible = computed({
@@ -66,6 +73,7 @@ const loadConfig = async () => {
         ...configForm.value,
         ...config
       };
+      configForm.value.model = normalizeChatModel(configForm.value.model);
     }
   } catch (error) {
     console.error('加载 AI 配置失败:', error);
@@ -109,7 +117,7 @@ const resetToDefault = () => {
   configForm.value = {
     ...configForm.value,
     systemPrompt: '',
-    model: 'deepseek-v3',
+    model: DEFAULT_CHAT_MODEL,
     temperature: 0.7,
     topP: 1.0,
     presencePenalty: 0.0,
