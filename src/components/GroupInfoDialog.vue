@@ -594,6 +594,9 @@ watch(visible, (newVal) => {
       editForm.value.description = groupInfo.value.description || '';
       editForm.value.avatar = groupInfo.value.avatar || '';
     }
+    groupMembers.value.forEach((member) => {
+      onlineStore.fetchUserOnlineStatus(member.id);
+    });
   }
 });
 </script>

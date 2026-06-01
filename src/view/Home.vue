@@ -65,8 +65,9 @@ onMounted(async () => {
   // 智能初始化消息（自动判断是否需要从服务器获取，并启动 WebSocket）
   await msgStore.initMessages();
   
-  // 初始化在线状态
-  await onlineStore.initOnlineStatus();
+  // 初始化在线状态（逐个查询好友在线情况）
+  const friendIds = friendStore.friends.map((friend) => friend.id);
+  await onlineStore.initOnlineStatus(friendIds);
   
   // 从消息同步会话列表（初始化或恢复会话）
   convStore.syncConversationsFromMessages();

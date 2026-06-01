@@ -12,6 +12,7 @@ class WebSocketService {
         this.messageHandlers = new Map();// <type,handler[]>观察者
         this.isManualClose = false;//手动关闭
         this.isConnected = false;
+        this.hasConnectedBefore = false;
     }
 
     /**
@@ -37,6 +38,8 @@ class WebSocketService {
 
             this.ws.onopen = () => {
                 console.log('WebSocket 连接成功');
+                const reconnected = this.hasConnectedBefore;
+                this.hasConnectedBefore = true;
                 this.isConnected = true;
                 this.reconnectAttempts = 0;
                 
@@ -44,7 +47,7 @@ class WebSocketService {
                 this.startHeartbeat();
                 
                 // 触发连接成功回调
-                this.triggerHandler('open', { connected: true });
+                this.triggerHandler('open', { connected: true, reconnected });
             };
 
             this.ws.onmessage = (event) => {
@@ -136,6 +139,7 @@ class WebSocketService {
         }
         
         this.isConnected = false;
+        this.hasConnectedBefore = false;
         console.log('WebSocket 已断开');
     }
 
