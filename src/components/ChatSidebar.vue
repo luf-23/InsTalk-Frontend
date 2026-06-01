@@ -665,11 +665,8 @@ const logout = async () => {
       console.error('登出接口调用失败', error);
     } finally {
       // 无论接口是否成功，都清除本地存储并退出
-      authStore.clearAuth();
+      await authStore.clearAuth();
       userInfoStore.clearUserInfo();
-      msgStore.clearMessageData();
-      friendStore.clearFriendshipData();
-      gStore.clearGroupData();
       convStore.clearConversationData();
       router.push('/login');
     }

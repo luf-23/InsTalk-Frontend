@@ -123,7 +123,7 @@ request.interceptors.response.use(
         // 刷新失败，清除所有认证信息和用户信息
         const userInfoStore = useUserInfoStore();
         processQueue(refreshError, null);
-        authStore.clearAuth();
+        await authStore.clearAuth();
         userInfoStore.clearUserInfo();
         
         ElMessage.error('登录已过期，请重新登录');

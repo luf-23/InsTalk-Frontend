@@ -988,7 +988,7 @@ const clearAiHistory = () => {
       cancelButtonText: '取消',
       type: 'warning',
     }
-  ).then(() => {
+  ).then(async () => {
     // 找出当前AI对话的所有消息ID
     const aiMessages = messages.value.filter(message => {
       if (chatType.value === 'friend') {
@@ -997,14 +997,8 @@ const clearAiHistory = () => {
       return false;
     });
     
-    // 从store中删除这些消息
     const messageIds = aiMessages.map(msg => msg.id);
-    messageIds.forEach(id => {
-      const index = msgStore.messages.findIndex(m => m.id === id);
-      if (index !== -1) {
-        msgStore.messages.splice(index, 1);
-      }
-    });
+    await msgStore.deleteMessagesByIds(messageIds);
     
     ElMessage.success('AI聊天历史已清空');
   }).catch(() => {

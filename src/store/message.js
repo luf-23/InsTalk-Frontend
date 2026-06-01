@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
-import { sendMessageService, getMessageHistoryService, revokeMessageService, deleteMessageService, forwardMessageService } from "@/api/message";
+import { sendMessageService, getMessageHistoryService, getNewMessagesService, revokeMessageService, deleteMessageService, forwardMessageService } from "@/api/message";
 import { useUserInfoStore } from "@/store/userInfo";
 import { conversationStore } from "@/store/conversation";
 import { friendshipStore } from "@/store/friendship";
@@ -8,6 +8,7 @@ import { groupStore } from "@/store/group";
 import { ElMessage } from "element-plus";
 import websocketService from "@/util/websocket";
 import { useAuthStore } from "@/store/auth";
+import * as messageDb from "@/util/messageDb";
 
 // 时间比较辅助函数
 const getTimeForComparison = (timeString) => {
@@ -19,7 +20,7 @@ const getTimeForComparison = (timeString) => {
 };
 
 export const messageStore = defineStore('message', () => {
-    // 存储所有和我有关的消息列表
+    // 运行时消息缓存（持久化在 IndexedDB）
     const messages = ref([]);
     // 当前选中的聊天对象/群组
     const currentChat = ref(null);
@@ -43,18 +44,23 @@ export const messageStore = defineStore('message', () => {
     // key: userId, value: { username, avatar }
     const userInfoCache = ref({});
 
-    // 获取消息历史（强制从服务器刷新）
+    const getCurrentUserId = () => {
+        const userInfoStore = useUserInfoStore();
+        return userInfoStore.userInfo?.id || null;
+    };
+
     const fetchMessageHistory = async (force = false) => {
-        // 如果本地已有消息且不是强制刷新，则跳过
         if (!force && messages.value.length > 0) {
             console.log('本地已有消息，跳过获取历史消息');
             return;
         }
-        
+
         loading.value.messages = true;
         try {
             const data = await getMessageHistoryService();
-            messages.value = data || [];
+            const list = data || [];
+            messages.value = list;
+            await messageDb.replaceAllMessages(list, getCurrentUserId());
             console.log('从服务器获取消息历史成功');
         } catch (error) {
             console.error('获取消息历史失败:', error);
@@ -63,89 +69,105 @@ export const messageStore = defineStore('message', () => {
             loading.value.messages = false;
         }
     };
-    
-    // 初始化消息数据（智能加载）
+
+    const loadMessagesFromDb = async () => {
+        await messageDb.initMessageDb();
+        messages.value = await messageDb.getAllMessages();
+    };
+
+    const mergeIncomingMessages = async (newMessages, isNewMessage = true) => {
+        if (!newMessages || !Array.isArray(newMessages) || newMessages.length === 0) {
+            return 0;
+        }
+
+        const existingIds = new Set(messages.value.map(m => m.id));
+        const uniqueNewMessages = newMessages.filter(msg => !existingIds.has(msg.id));
+        if (uniqueNewMessages.length === 0) {
+            return 0;
+        }
+
+        messages.value.push(...uniqueNewMessages);
+        await messageDb.putMessages(uniqueNewMessages, getCurrentUserId());
+
+        const convStore = conversationStore();
+        const currentUserId = getCurrentUserId();
+
+        uniqueNewMessages.forEach(messageVO => {
+            let conversationId;
+            let conversationType;
+
+            if (messageVO.groupId) {
+                conversationId = messageVO.groupId;
+                conversationType = 'group';
+            } else {
+                conversationId = messageVO.senderId === currentUserId
+                    ? messageVO.receiverId
+                    : messageVO.senderId;
+                conversationType = 'friend';
+            }
+
+            convStore.createOrUpdateConversation({
+                id: conversationId,
+                type: conversationType,
+                lastMessage: messageVO,
+                isNewMessage
+            });
+        });
+
+        return uniqueNewMessages.length;
+    };
+
+    const resolveLastMessage = async () => {
+        const fromDb = await messageDb.getLastMessage();
+        if (fromDb) {
+            return fromDb;
+        }
+        return getLastMessage();
+    };
+
+    const syncNewMessages = async () => {
+        const lastMessage = await resolveLastMessage();
+        if (!lastMessage) {
+            if (messages.value.length === 0) {
+                await fetchMessageHistory(true);
+            }
+            return 0;
+        }
+
+        try {
+            const newMessages = await getNewMessagesService({
+                id: lastMessage.id,
+                senderId: lastMessage.senderId,
+                receiverId: lastMessage.receiverId,
+                groupId: lastMessage.groupId,
+                content: lastMessage.content,
+                messageType: lastMessage.messageType,
+                sentAt: lastMessage.sentAt,
+                isRead: lastMessage.isRead
+            });
+            return await mergeIncomingMessages(newMessages, true);
+        } catch (error) {
+            console.error('同步新消息失败:', error);
+            return 0;
+        }
+    };
+
     const initMessages = async () => {
-        // 如果本地已有消息，直接使用本地数据，并尝试获取新消息
+        await messageDb.initMessageDb();
+        await messageDb.migrateMessagesFromLocalStorage(getCurrentUserId());
+        await loadMessagesFromDb();
+
         if (messages.value.length > 0) {
-            console.log(`使用本地缓存的 ${messages.value.length} 条消息`);
-            
-            // 获取本地最后一条消息
-            const lastMessage = getLastMessage();
-            
-            if (lastMessage) {
-                console.log('本地有聊天记录，正在获取服务器最近30天的新消息...');
-                try {
-                    // 调用接口获取新消息，传入最后一条消息
-                    const { getNewMessagesService } = await import('@/api/message');
-                    const newMessages = await getNewMessagesService({
-                        id: lastMessage.id,
-                        senderId: lastMessage.senderId,
-                        receiverId: lastMessage.receiverId,
-                        groupId: lastMessage.groupId,
-                        content: lastMessage.content,
-                        messageType: lastMessage.messageType,
-                        sentAt: lastMessage.sentAt,
-                        isRead: lastMessage.isRead
-                    });
-                    
-                    // 合并新消息到本地消息列表
-                    if (newMessages && Array.isArray(newMessages) && newMessages.length > 0) {
-                        console.log(`从服务器获取到 ${newMessages.length} 条新消息`);
-                        
-                        // 过滤掉本地已存在的消息
-                        const existingIds = new Set(messages.value.map(m => m.id));
-                        const uniqueNewMessages = newMessages.filter(msg => !existingIds.has(msg.id));
-                        
-                        if (uniqueNewMessages.length > 0) {
-                            messages.value.push(...uniqueNewMessages);
-                            console.log(`成功添加 ${uniqueNewMessages.length} 条新消息到本地`);
-                            
-                            // 更新会话列表
-                            const convStore = conversationStore();
-                            const currentUserId = getCurrentUserId();
-                            
-                            uniqueNewMessages.forEach(messageVO => {
-                                let conversationId, conversationType;
-                                
-                                if (messageVO.groupId) {
-                                    // 群组消息
-                                    conversationId = messageVO.groupId;
-                                    conversationType = 'group';
-                                } else {
-                                    // 好友消息：找到对方的 ID
-                                    conversationId = messageVO.senderId === currentUserId 
-                                        ? messageVO.receiverId 
-                                        : messageVO.senderId;
-                                    conversationType = 'friend';
-                                }
-                                
-                                // 创建或更新会话（新收到的消息）
-                                convStore.createOrUpdateConversation({
-                                    id: conversationId,
-                                    type: conversationType,
-                                    lastMessage: messageVO,
-                                    isNewMessage: true
-                                });
-                            });
-                        } else {
-                            console.log('没有新消息需要添加（服务器返回的消息已存在）');
-                        }
-                    } else {
-                        console.log('服务器没有返回新消息');
-                    }
-                } catch (error) {
-                    console.error('获取新消息失败:', error);
-                    // 获取新消息失败不影响使用本地缓存
-                }
+            console.log(`从 IndexedDB 加载 ${messages.value.length} 条消息`);
+            const added = await syncNewMessages();
+            if (added > 0) {
+                console.log(`初始化时同步 ${added} 条新消息`);
             }
         } else {
-            // 本地无数据，从服务器获取
-            console.log('本地无消息，从服务器获取历史消息');
+            console.log('IndexedDB 无消息，从服务器获取历史消息');
             await fetchMessageHistory(true);
         }
-        
-        // 初始化 WebSocket 连接
+
         initWebSocket();
     };
 
@@ -162,66 +184,54 @@ export const messageStore = defineStore('message', () => {
         }
 
         // 注册消息处理器
-        wsMessageHandler = (messageVO) => {
+        wsMessageHandler = async (messageVO) => {
             console.log('收到新消息通过 WebSocket:', messageVO);
-            
-            // 检查消息是否已存在
+
             const exists = messages.value.some(m => m.id === messageVO.id);
-            if (!exists) {
-                messages.value.push(messageVO);
-                
-                // 创建或更新会话
-                const convStore = conversationStore();
-                const currentUserId = getCurrentUserId();
-                
-                let conversationId, conversationType;
-                
-                if (messageVO.groupId) {
-                    // 群组消息
-                    conversationId = messageVO.groupId;
-                    conversationType = 'group';
-                } else {
-                    // 好友消息：找到对方的 ID
-                    conversationId = messageVO.senderId === currentUserId 
-                        ? messageVO.receiverId 
-                        : messageVO.senderId;
-                    conversationType = 'friend';
-                }
-                
-                // 创建或更新会话（新收到的消息）
-                convStore.createOrUpdateConversation({
-                    id: conversationId,
-                    type: conversationType,
-                    lastMessage: messageVO,
-                    isNewMessage: true
+            if (exists) {
+                return;
+            }
+
+            const added = await mergeIncomingMessages([messageVO], true);
+            if (added === 0) {
+                return;
+            }
+
+            const currentUserId = getCurrentUserId();
+            let conversationId;
+            let conversationType;
+
+            if (messageVO.groupId) {
+                conversationId = messageVO.groupId;
+                conversationType = 'group';
+            } else {
+                conversationId = messageVO.senderId === currentUserId
+                    ? messageVO.receiverId
+                    : messageVO.senderId;
+                conversationType = 'friend';
+            }
+
+            if (!currentChat.value ||
+                currentChat.value.id !== conversationId ||
+                chatType.value !== conversationType) {
+                ElMessage.info({
+                    message: `收到新消息`,
+                    duration: 2000
                 });
-                
-                // 显示通知（如果不在当前聊天窗口）
-                if (!currentChat.value || 
-                    currentChat.value.id !== conversationId || 
-                    chatType.value !== conversationType) {
-                    ElMessage.info({
-                        message: `收到新消息`,
-                        duration: 2000
-                    });
-                }
             }
         };
 
         // 注册消息撤回处理器
-        wsMessageRecallHandler = (data) => {
+        wsMessageRecallHandler = async (data) => {
             console.log('收到消息撤回通知:', data);
             const messageId = data.messageId;
-            
-            // 从本地消息列表中删除被撤回的消息
+
             const messageIndex = messages.value.findIndex(m => m.id === messageId);
             if (messageIndex !== -1) {
                 const message = messages.value[messageIndex];
                 messages.value.splice(messageIndex, 1);
-                
-                // 更新会话的最后一条消息
+                await messageDb.deleteMessage(messageId);
                 updateConversationAfterMessageDeletion(message);
-                
                 console.log(`消息 ${messageId} 已从列表中移除（撤回）`);
             }
         };
@@ -304,9 +314,15 @@ export const messageStore = defineStore('message', () => {
         websocketService.on('onlineStatus', wsOnlineStatusHandler);
         websocketService.on('friendDeleted', wsFriendDeletedHandler);
         websocketService.on('groupDeleted', wsGroupDeletedHandler);
-        websocketService.on('open', () => {
+        websocketService.on('open', async (data) => {
             wsConnected.value = true;
             console.log('WebSocket 已连接');
+            if (data?.reconnected) {
+                const added = await syncNewMessages();
+                if (added > 0) {
+                    console.log(`WebSocket 重连后同步 ${added} 条新消息`);
+                }
+            }
         });
         websocketService.on('close', () => {
             wsConnected.value = false;
@@ -358,10 +374,9 @@ export const messageStore = defineStore('message', () => {
                 // 检查消息是否已存在(避免与 WebSocket 重复)
                 const exists = messages.value.some(m => m.id === messageVO.id);
                 if (!exists) {
-                    // 直接将返回的消息插入到消息列表中
                     messages.value.push(messageVO);
-                    
-                    // 创建或更新会话（自己发送的消息，不增加未读数）
+                    await messageDb.putMessage(messageVO, getCurrentUserId());
+
                     const convStore = conversationStore();
                     const conversationId = messageVO.groupId || messageVO.receiverId;
                     const conversationType = messageVO.groupId ? 'group' : 'friend';
@@ -396,6 +411,26 @@ export const messageStore = defineStore('message', () => {
             getTimeForComparison(b.sentAt) - getTimeForComparison(a.sentAt)
         );
         return sortedMessages[0];
+    };
+
+    const persistMessage = async (message) => {
+        if (!message?.id) {
+            return;
+        }
+        const index = messages.value.findIndex(m => m.id === message.id);
+        if (index !== -1) {
+            messages.value[index] = { ...message };
+        }
+        await messageDb.putMessage(message, getCurrentUserId());
+    };
+
+    const deleteMessagesByIds = async (messageIds) => {
+        if (!messageIds?.length) {
+            return;
+        }
+        const idSet = new Set(messageIds);
+        messages.value = messages.value.filter(m => !idSet.has(m.id));
+        await messageDb.deleteMessages(messageIds);
     };
 
     // 设置当前聊天对象
@@ -462,17 +497,11 @@ export const messageStore = defineStore('message', () => {
             );
         });
 
-    // 获取当前用户ID
-    const getCurrentUserId = () => {
-        const userInfoStore = useUserInfoStore();
-        return userInfoStore.userInfo?.id || null;
-    };
-
     // 清空所有数据（用于退出登录时）
-    const clearMessageData = () => {
-        // 断开 WebSocket
+    const clearMessageData = async () => {
         disconnectWebSocket();
-        
+
+        await messageDb.clearAllMessages();
         messages.value = [];
         currentChat.value = null;
         chatType.value = 'friend';
@@ -501,8 +530,8 @@ export const messageStore = defineStore('message', () => {
             if (index !== -1) {
                 messages.value.splice(index, 1);
             }
-            
-            // 更新会话的最后一条消息
+            await messageDb.deleteMessage(messageId);
+
             updateConversationAfterMessageDeletion(messageToDelete);
             
             return { success: true };
@@ -529,8 +558,8 @@ export const messageStore = defineStore('message', () => {
             if (index !== -1) {
                 messages.value.splice(index, 1);
             }
-            
-            // 更新会话的最后一条消息
+            await messageDb.deleteMessage(messageId);
+
             updateConversationAfterMessageDeletion(messageToRecall);
             
             return { success: true };
@@ -605,7 +634,6 @@ export const messageStore = defineStore('message', () => {
     const pullMessagesAfterAiReply = async (anchorMessage) => {
         if (!anchorMessage || anchorMessage.id == null) return;
 
-        const { getNewMessagesService } = await import('@/api/message');
         const maxAttempts = 12;
         const delayMs = 200;
 
@@ -615,39 +643,10 @@ export const messageStore = defineStore('message', () => {
             }
             try {
                 const newMessages = await getNewMessagesService(anchorMessage);
-                if (!newMessages || !Array.isArray(newMessages) || newMessages.length === 0) {
-                    continue;
+                const added = await mergeIncomingMessages(newMessages, true);
+                if (added > 0) {
+                    return;
                 }
-                const existingIds = new Set(messages.value.map((m) => m.id));
-                const uniqueNew = newMessages.filter((msg) => !existingIds.has(msg.id));
-                if (uniqueNew.length === 0) {
-                    continue;
-                }
-                messages.value.push(...uniqueNew);
-
-                const convStore = conversationStore();
-                const currentUserId = getCurrentUserId();
-                uniqueNew.forEach((messageVO) => {
-                    let conversationId;
-                    let conversationType;
-                    if (messageVO.groupId) {
-                        conversationId = messageVO.groupId;
-                        conversationType = 'group';
-                    } else {
-                        conversationId =
-                            messageVO.senderId === currentUserId
-                                ? messageVO.receiverId
-                                : messageVO.senderId;
-                        conversationType = 'friend';
-                    }
-                    convStore.createOrUpdateConversation({
-                        id: conversationId,
-                        type: conversationType,
-                        lastMessage: messageVO,
-                        isNewMessage: true,
-                    });
-                });
-                return;
             } catch (error) {
                 console.error('AI 回复后同步消息失败:', error);
             }
@@ -678,8 +677,8 @@ export const messageStore = defineStore('message', () => {
                 const exists = messages.value.some(m => m.id === messageVO.id);
                 if (!exists) {
                     messages.value.push(messageVO);
-                    
-                    // 更新会话
+                    await messageDb.putMessage(messageVO, getCurrentUserId());
+
                     const convStore = conversationStore();
                     convStore.createOrUpdateConversation({
                         id: targetId,
@@ -720,12 +719,15 @@ export const messageStore = defineStore('message', () => {
         deleteMessage,
         recallMessage,
         forwardMessage,
-        pullMessagesAfterAiReply
+        pullMessagesAfterAiReply,
+        persistMessage,
+        deleteMessagesByIds,
+        syncNewMessages
     };
 }, {
     persist: {
         key: 'instalk-messages',
         storage: localStorage,
-        paths: ['messages', 'currentChat', 'chatType', 'userInfoCache']
+        paths: ['currentChat', 'chatType', 'userInfoCache']
     }
 });

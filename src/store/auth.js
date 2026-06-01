@@ -33,17 +33,16 @@ export const useAuthStore = defineStore(
     };
     
     // 清除所有认证信息
-    const clearAuth = () => {
+    const clearAuth = async () => {
       accessToken.value = null;
       refreshToken.value = null;
       
-      // 清理好友、群组和消息数据
       const friendStore = friendshipStore();
       const groupData = groupStore();
       const msgStore = messageStore();
       friendStore.clearFriendshipData();
       groupData.clearGroupData();
-      msgStore.clearMessageData();
+      await msgStore.clearMessageData();
     };
     
     // 只清除accessToken（用于token过期时）

@@ -188,9 +188,10 @@ export const conversationStore = defineStore('conversation', () => {
                     }
                     
                     // 更新本地消息的已读状态
-                    unreadMessages.forEach(msg => {
+                    for (const msg of unreadMessages) {
                         msg.isRead = true;
-                    });
+                        await msgStore.persistMessage(msg);
+                    }
                     
                     console.log(`成功标记 ${messageIds.length} 条消息为已读`);
                 } catch (error) {
