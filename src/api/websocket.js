@@ -9,3 +9,14 @@ export const checkUserOnlineService = (userId) => {
         method: 'GET'
     });
 };
+
+/**
+ * 批量检查用户在线状态
+ */
+export const batchCheckUserOnlineService = (userIds) => {
+    return request({
+        url: '/ws/online/batch',
+        method: 'POST',
+        data: userIds
+    });
+};

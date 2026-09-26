@@ -36,7 +36,6 @@ export const messageStore = defineStore('message', () => {
     // WebSocket 消息处理器
     let wsMessageHandler = null;
     let wsMessageRecallHandler = null;
-    let wsOnlineStatusHandler = null;
     let wsFriendDeletedHandler = null;
     let wsGroupDeletedHandler = null;
     
@@ -236,12 +235,6 @@ export const messageStore = defineStore('message', () => {
             }
         };
 
-        wsOnlineStatusHandler = (statusData) => {
-            console.log('用户在线状态更新:', statusData);
-            // 可以在这里更新好友列表的在线状态
-            // 这里暂时只记录日志，具体实现可以在 friendship store 中处理
-        };
-
         // 注册好友删除处理器
         wsFriendDeletedHandler = (data) => {
             console.log('收到好友删除通知:', data);
@@ -311,7 +304,6 @@ export const messageStore = defineStore('message', () => {
         // 注册处理器
         websocketService.on('newMessage', wsMessageHandler);
         websocketService.on('messageRecall', wsMessageRecallHandler);
-        websocketService.on('onlineStatus', wsOnlineStatusHandler);
         websocketService.on('friendDeleted', wsFriendDeletedHandler);
         websocketService.on('groupDeleted', wsGroupDeletedHandler);
         websocketService.on('open', async (data) => {
@@ -345,10 +337,6 @@ export const messageStore = defineStore('message', () => {
         if (wsMessageRecallHandler) {
             websocketService.off('messageRecall', wsMessageRecallHandler);
             wsMessageRecallHandler = null;
-        }
-        if (wsOnlineStatusHandler) {
-            websocketService.off('onlineStatus', wsOnlineStatusHandler);
-            wsOnlineStatusHandler = null;
         }
         if (wsFriendDeletedHandler) {
             websocketService.off('friendDeleted', wsFriendDeletedHandler);

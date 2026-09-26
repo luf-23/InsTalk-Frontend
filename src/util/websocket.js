@@ -70,9 +70,6 @@ class WebSocketService {
                         case 'MESSAGE_RECALL':
                             this.triggerHandler('messageRecall', data.data);
                             break;
-                        case 'USER_ONLINE_STATUS':
-                            this.triggerHandler('onlineStatus', data.data);
-                            break;
                         case 'FRIEND_DELETED':
                             this.triggerHandler('friendDeleted', data.data);
                             break;
